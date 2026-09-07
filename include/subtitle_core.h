@@ -27,7 +27,6 @@ private:
     std::unordered_map<std::string, std::string> m_db;
 
     static std::string makeKey(uint32_t voiceId);
-    static std::string makeAltKey(uint32_t voiceId);
 };
 
 extern SubtitleEngine g_SubtitleEngine;

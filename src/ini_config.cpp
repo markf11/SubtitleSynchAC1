@@ -69,7 +69,7 @@ bool SubtitleConfig::save() const
     try
     {
         const std::string& path = getIniPath();
-        inih::INIReader ini;
+        inih::INIReader ini(path); // retain Diagnostics and other existing sections
 
         ini.InsertEntry("Subtitle", "AutoPosition", g_subtitleSettings.autoPosition);
 

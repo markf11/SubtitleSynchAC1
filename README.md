@@ -2,6 +2,8 @@
 
 A runtime subtitle overlay tool that displays real-time subtitles by tracking in-game audio events and mapping them to a local subtitle database.
 
+The Ubisoft DX9 audio-sync repair is documented in [build, diagnostics and rollback instructions](docs/audio-sync-fix.md). This diagnostic build resolves verified direct-play event references; full in-game dialogue coverage still requires validation.
+
 This project uses a memory hook to detect currently playing audio cues and renders corresponding subtitles through an ImGui-based overlay.
 
 

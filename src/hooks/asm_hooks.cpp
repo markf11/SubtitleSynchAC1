@@ -1,120 +1,91 @@
-#include <hooks/asm_hooks.h>
-#include <audio_system.h>
-#include <xbyak/xbyak.h>
-#include <cstddef>
-#include <cstring>
-#include <memory>
-#include <stdexcept>
-
-#include "patcher.h"
-#include "globals.h"
+#include "hooks/asm_hooks.h"
+#include "hooks/audio_pattern.h"
+#include "audio_system.h"
+#include "diagnostics.h"
 #include "pattern_scan.h"
+#include <Windows.h>
+#include <MinHook.h>
+#include <xbyak/xbyak.h>
+#include <memory>
 
-void PushAudioEvent(uintptr_t evt) {
-    g_AudioQueue.push(evt);
+namespace {
+std::unique_ptr<Xbyak::CodeGenerator> audioStub;
+bool ReadGameAudio(uintptr_t address, void* output, size_t size) {
+    SIZE_T copied = 0;
+    return address && ReadProcessMemory(GetCurrentProcess(), reinterpret_cast<void*>(address),
+        output, size, &copied) && copied == size;
+}
+void __cdecl PushAudioEvent(uint32_t rawId, uintptr_t manager, uint32_t handle) noexcept {
+    const auto audio = resolveAudio(rawId, manager, handle, &ReadGameAudio);
+    g_AudioQueue.push({audio.id, GetCurrentThreadId(), GetTickCount64(), rawId, audio.resolution});
+}
 }
 
-template <typename Func>
-MidHook MakeMidHook(uintptr_t address, size_t overwriteSize, Func&& builder)
-{
-    MidHook hook{};
-    hook.address = address;
-    hook.size = overwriteSize;
-    hook.returnAddress = address + overwriteSize;
-    hook.overwrittenBytes.resize(overwriteSize);
-    std::memcpy(hook.overwrittenBytes.data(), reinterpret_cast<const void*>(address), overwriteSize);
-
-    if (overwriteSize < 5) // jmp + address needs 5 bytes
-        return hook;
-
-    auto code = std::make_unique<Xbyak::CodeGenerator>();
-
-    builder(*code, hook);
-
-    uintptr_t target = reinterpret_cast<uintptr_t>(code->getCode());
-    uintptr_t rel = target - (address + 5);
-
-    uint8_t jmp[5];
-    jmp[0] = 0xE9;
-    *(uint32_t*)&jmp[1] = static_cast<uint32_t>(rel);
-    // 0xE9 (jmp) to 0x00000000 (address 4bytes)
-
-    PatchBytes(address, jmp, 5);
-
-    if (overwriteSize > 5)
-        Nop(address + 5, overwriteSize - 5);
-
-    hook.code = std::move(code);
-    return hook;
+bool applyASMPatches() {
+    // The old pause stubs only replayed original instructions, with a decimal
+    // 108 typo instead of 0x108. Leaving those sites untouched preserves both.
+    const auto address = PatternScan::Find(AudioHook::Pattern);
+    if (!address) {
+        Diagnostics::error("audio hook requires exactly one executable-section match; subtitles disabled");
+        return false;
+    }
+    return AudioHook::Install(address + AudioHook::CallOffset);
 }
 
-MidHook Install(const HookDef& def)
-{
-    uintptr_t address = PatternScan::Find(def.pattern);
-
-    if (!address)
-        throw std::runtime_error("Failed to find hook pattern");
-
-    return MakeMidHook(address, def.size, def.builder);
-}
-
-MidHook unpauseHook;
-MidHook pauseHook;
-MidHook dareHook;
-
-void applyASMPatches()
-{
-    //dx9: 0x00C77B69
-    //dx10: 0x00E4BB29
-    unpauseHook = Install({
-        "C6 47 08 01 83 BE 08 01 00 00 00",
-        11,
-        [](Xbyak::CodeGenerator& c, MidHook& hook)
-        {
-            using namespace Xbyak;
-
-            c.mov(c.byte[c.edi + 8], 1);
-            c.cmp(c.dword[c.esi + 108], 0);
-            c.jmp((const void*)hook.returnAddress);
+bool AudioHook::Install(uintptr_t address) {
+    try {
+        auto code = std::make_unique<Xbyak::CodeGenerator>(1024);
+        void* trampoline = nullptr;
+        auto status = MH_CreateHook(reinterpret_cast<void*>(address),
+            const_cast<uint8_t*>(code->getCode()), &trampoline);
+        if (status != MH_OK) {
+            Diagnostics::log("hook_create status=%d", static_cast<int>(status));
+            Diagnostics::error("audio hook creation failed");
+            return false;
         }
-    });
-
-    //dx9: 0x00C774C5
-    //dx10: 0x00E4B485
-    pauseHook = Install({
-        "C6 47 08 00 83 BE 08 01 00 00 00",
-        11,
-        [](Xbyak::CodeGenerator& c, MidHook& hook)
-        {
-            using namespace Xbyak;
-
-            c.mov(c.byte[c.edi + 8], 0);
-            c.cmp(c.dword[c.esi + 108], 0);
-            c.jmp((const void*)hook.returnAddress);
-        }
-    });
-
-    //dx9: 0x007E8555
-    //dx10: 0x00C56625
-    dareHook = Install({
-        "E8 46 C7 FF FF",
-        5,
-        [](Xbyak::CodeGenerator& c, MidHook& hook)
-        {
-            using namespace Xbyak;
-            c.db(0x60); // pushad
-            c.db(0x9C); // pushfd
-
-            c.push(c.esi);
-
-            c.mov(c.eax, (uintptr_t)&PushAudioEvent);
+        try {
+            auto& c = *code;
+            c.pushad();
+            c.pushfd();
+            c.mov(c.ebp, c.esp);
+            c.and_(c.esp, -16);
+            c.sub(c.esp, 528);
+            // FXSAVE [ESP+16] (not exposed by the pinned Xbyak version).
+            const uint8_t save[] = {0x0F, 0xAE, 0x44, 0x24, 0x10};
+            c.db(save, sizeof(save));
+            c.cld();
+            c.mov(c.dword[c.esp], c.esi);
+            // At this exact CALL site EAX is the resource manager, and the
+            // scoped event handle is at original ESP+0x18 (PUSHAD/PUSHFD: +36).
+            c.mov(c.dword[c.esp + 4], c.eax);
+            c.mov(c.edx, c.dword[c.ebp + 0x3c]);
+            c.mov(c.dword[c.esp + 8], c.edx);
+            c.mov(c.eax, reinterpret_cast<uintptr_t>(&PushAudioEvent));
             c.call(c.eax);
-            c.add(c.esp, 4);
-
-            c.db(0x9D); // popfd
-            c.db(0x61); // popad
-
-            c.jmp((const void*)hook.returnAddress);
+            c.fxrstor(c.ptr[c.esp + 16]);
+            c.mov(c.esp, c.ebp);
+            c.popfd();
+            c.popad();
+            // MinHook relocates the original CALL; its EAX and side effects
+            // must reach the game's following MOV ESI,EAX unchanged.
+            c.jmp(trampoline);
+            c.ready();
+            FlushInstructionCache(GetCurrentProcess(), c.getCode(), c.getSize());
+        } catch (...) {
+            MH_RemoveHook(reinterpret_cast<void*>(address));
+            throw;
         }
-    });
+        status = MH_EnableHook(reinterpret_cast<void*>(address));
+        if (status != MH_OK) {
+            MH_RemoveHook(reinterpret_cast<void*>(address));
+            Diagnostics::error("audio hook enable failed");
+            return false;
+        }
+        audioStub = std::move(code);
+        Diagnostics::log("hook_enabled address=%p trampoline=%p", reinterpret_cast<void*>(address), trampoline);
+        return true;
+    } catch (const std::exception& e) {
+        Diagnostics::error(e.what());
+        return false;
+    }
 }

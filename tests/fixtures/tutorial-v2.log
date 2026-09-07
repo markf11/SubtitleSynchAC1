@@ -1,0 +1,6 @@
+t=21272171 audio event_t=21272171 thread=23592 id=0x00000000 raw=0x103205bc resolution=2
+t=21272187 audio event_t=21272171 thread=30900 id=0x20a802f9 raw=0x10a80305 resolution=1
+t=21272187 audio event_t=21272171 thread=30900 id=0x00000000 raw=0x103205bc resolution=2
+t=21272187 audio event_t=21272171 thread=30900 id=0x204d0033 raw=0x104d002b resolution=1
+t=21272187 audio event_t=21272187 thread=30900 id=0x20830020 raw=0x10830003 resolution=1
+t=21272218 audio event_t=21272203 thread=30900 id=0x20830059 raw=0x1083002f resolution=1

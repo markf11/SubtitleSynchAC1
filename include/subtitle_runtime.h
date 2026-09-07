@@ -13,7 +13,7 @@ public:
     SubtitleRuntime() = default;
 
     void start(const std::vector<SubtitleSegment>& segments,
-               clock::duration fallbackDuration);
+               clock::duration fallbackDuration, clock::time_point now = clock::now());
 
     void update(clock::time_point now = clock::now());
 

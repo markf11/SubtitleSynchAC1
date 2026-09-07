@@ -25,4 +25,6 @@ public:
     HWND m_window;
 
     bool m_paused = false;
+    std::string m_lastDiagnosticText;
+    bool m_lastDiagnosticVisible = false;
 };

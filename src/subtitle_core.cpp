@@ -1,4 +1,7 @@
 #include <fstream>
+#include <cstdio>
+#include <cctype>
+#include <cmath>
 
 #include "subtitle_core.h"
 
@@ -16,6 +19,7 @@ bool SubtitleEngine::load(const std::string& filepath) {
         std::istreambuf_iterator<char>()
     );
 
+    m_db.clear();
     size_t pos = 0;
     size_t count = 0;
 
@@ -86,40 +90,12 @@ std::string SubtitleEngine::makeKey(uint32_t voiceId) {
     return buf;
 }
 
-std::string SubtitleEngine::makeAltKey(uint32_t voiceId) {
-    char buf[32];
-    uint32_t mod = (voiceId & 0x0FFFFFFF) | 0x20000000;
-    std::sprintf(buf, "0x%08x", mod);
-    return buf;
-}
-
-
-static uint32_t normalizeVoiceId(uint32_t id)
-{
-    if (id & 0x20000000)
-        return id;
-
-    return (id & 0x0FFFFFFF) | 0x20000000;
-}
-
 std::string SubtitleEngine::getRaw(uint32_t voiceId) const
 {
-    uint32_t n = normalizeVoiceId(voiceId);
-    std::string key = makeKey(n);
-
-    auto it = m_db.find(key);
-    if (it != m_db.end())
-        return it->second;
-
-    it = m_db.find(makeAltKey(voiceId));
-    if (it != m_db.end())
-        return it->second;
-
-    it = m_db.find(makeKey(voiceId));
-    if (it != m_db.end())
-        return it->second;
-
-    return {};
+    // Resource type bits are part of the ID. Do not turn arbitrary resources
+    // into voice lines by replacing their high nibble with 0x2.
+    auto it = m_db.find(makeKey(voiceId));
+    return it != m_db.end() ? it->second : std::string{};
 }
 
 std::string SubtitleEngine::stripTags(const std::string& s) {
@@ -142,7 +118,8 @@ double SubtitleEngine::extractDuration(const std::string& s) {
     if (end == std::string::npos) return 0.0;
 
     try {
-        return std::stod(s.substr(p + 10, end - (p + 10)));
+        double value = std::stod(s.substr(p + 10, end - (p + 10)));
+        return std::isfinite(value) && value > 0.0 ? value : 0.0;
     } catch (...) {
         return 0.0;
     }

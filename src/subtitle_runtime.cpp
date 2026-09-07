@@ -4,7 +4,7 @@
 
 void SubtitleRuntime::start(
     const std::vector<SubtitleSegment>& segments,
-    clock::duration fallbackDuration)
+    clock::duration fallbackDuration, clock::time_point now)
 {
     m_segments = segments;
     m_index = 0;
@@ -16,7 +16,6 @@ void SubtitleRuntime::start(
 
     m_currentText = m_segments[0].text;
 
-    auto now = clock::now();
 
     double wait = m_segments[0].waitAfter;
     
@@ -26,7 +25,7 @@ void SubtitleRuntime::start(
         : m_fallbackDuration
     );
 
-    m_startTime = clock::now();
+    m_startTime = now;
     m_endTime = m_startTime + fallbackDuration;
 }
 
@@ -53,16 +52,14 @@ void SubtitleRuntime::update(clock::time_point now)
     if (!m_active || m_segments.empty())
         return;
 
-    if (now < m_nextSwitch)
-        return;
-
     if (now >= m_endTime)
     {
         reset();
         return;
     }
 
-    advance(now);
+    while (m_active && now >= m_nextSwitch)
+        advance(m_nextSwitch);
 }
 
 void SubtitleRuntime::reset()
