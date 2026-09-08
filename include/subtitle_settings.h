@@ -5,13 +5,16 @@
 struct SubtitleSettings
 {
     ImVec2 position { 960.0f, 980.0f };
-    ImVec2 padding  { 8.0f, -25.0f };
+    ImVec2 padding  { 8.0f, 6.0f };
 
     ImVec4 textColor       { 1.f, 1.f, 1.f, 1.f };
     ImVec4 backgroundColor { 0.f, 0.f, 0.f, 0.5f };
 
     float scale = 1.0f;
     float fontSize = 30.0f;
+    bool autoScale = true;
+    float referenceHeight = 1080.0f;
+    float maxWidthPercent = 90.0f;
 
     bool autoPosition = true;
 

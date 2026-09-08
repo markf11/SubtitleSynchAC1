@@ -1,0 +1,69 @@
+#include "subtitle_layout.h"
+#include <cmath>
+#include <iostream>
+#include <stdexcept>
+#include <limits>
+
+void check(bool condition, const char* message) {
+    if (!condition) throw std::runtime_error(message);
+}
+
+int main() {
+    ImGui::CreateContext();
+    try {
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+        ImFont* font = io.Fonts->AddFontDefaultVector();
+        SubtitleSettings s;
+        check(subtitleFontSize(s, {1920,1080}) == 30, "1080p base size");
+        check(subtitleFontSize(s, {2560,1440}) == 40, "1440p scale");
+        check(subtitleFontSize(s, {3840,2160}) == 60, "4K scale");
+        s.fontSize = 40;
+        s.scale = 1.5f;
+        check(subtitleFontSize(s, {3840,2160}) == 120, "custom base and multiplier");
+        s.autoScale = false;
+        check(subtitleFontSize(s, {3840,2160}) == 60, "fixed size mode");
+        s = SubtitleSettings{};
+        float previousLines = 0;
+        const char* text = u8"Árvíztűrő tükörfúrógép: ez egy hosszú magyar felirat, amelynek automatikusan több sorba kell törnie a képernyő szélén. ";
+        std::string longText;
+        for (int i=0; i<5; ++i) longText += text;
+        for (ImVec2 display : {ImVec2(1280,720), ImVec2(1920,1080), ImVec2(3840,2160), ImVec2(1080,1920)}) {
+            io.DisplaySize = display;
+            io.DeltaTime = 1.0f / 60;
+            ImGui::NewFrame();
+            ImGui::PushFont(font, subtitleFontSize(s, display));
+            const auto layout = measureSubtitle(s, display, longText.c_str());
+            const auto measured = ImGui::CalcTextSize(longText.c_str(), nullptr, false, layout.wrapWidth);
+            check(measured.y > ImGui::GetFontSize(), "long text wraps");
+            check(layout.size.x <= display.x * .9f + 1, "horizontal screen budget");
+            check(layout.position.x >= 0 && layout.position.y >= 0, "nonnegative position");
+            check(layout.position.y + layout.size.y <= display.y + 1, "wrapped block stays above bottom");
+            const float lines = measured.y / ImGui::GetFontSize();
+            if (display.x > display.y && previousLines)
+                check(std::abs(lines - previousLines) <= 1, "proportional resolution keeps wrapping stable");
+            previousLines = lines;
+            const auto explicitBreak = measureSubtitle(s, display, "one\ntwo");
+            check(explicitBreak.size.y >= 2 * ImGui::GetFontSize(), "manual line break preserved");
+            const std::string unbroken(300, 'W');
+            const auto word = measureSubtitle(s, display, unbroken.c_str());
+            check(word.size.y > ImGui::GetFontSize() && word.size.x <= display.x * .9f + 1,
+                  "unbroken token wraps within width budget");
+            s.autoPosition = false; s.position = {-100,100000}; s.padding.y = -25;
+            const auto manual = measureSubtitle(s, display, "short");
+            check(manual.position.x == 0 && manual.position.y + manual.size.y <= display.y + 1, "manual position clamped after resize");
+            check(manual.padding.y == 0, "legacy negative padding cannot clip text");
+            s = SubtitleSettings{};
+            ImGui::PopFont();
+            ImGui::EndFrame();
+        }
+        s.fontSize = std::numeric_limits<float>::quiet_NaN();
+        s.referenceHeight = 0;
+        check(std::isfinite(subtitleFontSize(s, {1920,1080})), "invalid config stays finite");
+        ImGui::DestroyContext();
+        std::cout << "PASS: font scaling, real font wrapping, UTF-8, explicit breaks, resized placement\n";
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << '\n'; ImGui::DestroyContext(); return 1;
+    }
+}

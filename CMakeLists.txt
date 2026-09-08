@@ -19,6 +19,7 @@ add_library(SubtitleSynchAC1 SHARED
     src/audio_system.cpp
     src/audio_resolver.cpp
     src/overlay_ui.cpp
+    src/subtitle_layout.cpp
     src/globals.cpp
     src/console.cpp
     src/hooks/asm_hooks.cpp
@@ -122,6 +123,10 @@ include(CTest)
 add_executable(replay_events tools/replay_events.cpp src/subtitle_core.cpp src/subtitle_runtime.cpp)
 target_include_directories(replay_events PRIVATE include)
 if(BUILD_TESTING)
+    add_executable(layout_tests tests/layout_tests.cpp src/subtitle_layout.cpp)
+    target_include_directories(layout_tests PRIVATE include)
+    target_link_libraries(layout_tests PRIVATE imgui)
+    add_test(NAME layout_tests COMMAND layout_tests)
     add_test(NAME tutorial_replay COMMAND replay_events
         ${ROOT}/tests/fixtures/tutorial-v2.log ${ROOT}/tests/fixtures/subtitles.json)
     set_tests_properties(tutorial_replay PROPERTIES PASS_REGULAR_EXPRESSION "events=6 exact_matches=1")

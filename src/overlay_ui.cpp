@@ -7,6 +7,7 @@
 #include "reshaper/arabic.h"
 #include "ini_config.h"
 #include "subtitle_settings.h"
+#include "subtitle_layout.h"
 #include "globals.h"
 
 SubtitleSettings g_subtitleSettings;
@@ -137,7 +138,7 @@ void SubtitleOverlay::advanceSegment()
 
 
 void SubtitleOverlay::drawDebugWindow() {
-    ImGui::SetNextWindowSize(ImVec2(300, 550));
+    ImGui::SetNextWindowSize(ImVec2(450, 650), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(0, 0));
 
     ImGui::Begin("SubtitleSynchAC1 by bloxtbc", &m_debugWindow, ImGuiWindowFlags_None);
@@ -157,26 +158,26 @@ void SubtitleOverlay::drawDebugWindow() {
     ImGuiIO& io = ImGui::GetIO();
     ImGui::Text("Mouse: %.1f %.1f", io.MousePos.x, io.MousePos.y);
 
-    ImGui::DragFloat2("Padding", (float*)&g_subtitleSettings.padding, 0.1f, -10.0f, 10.0f);
-    ImVec2 screenSize = io.DisplaySize;
-    if (g_subtitleSettings.autoPosition) {
-        g_subtitleSettings.position = ImVec2(screenSize.x / 2.0f, screenSize.y - 100.0f);
-    }
-    else {
+    ImGui::DragFloat2("Padding", (float*)&g_subtitleSettings.padding, 0.5f, 0.0f, 100.0f);
+    const ImVec2 screenSize = io.DisplaySize;
+    ImGui::Text("Game display: %.0f x %.0f", screenSize.x, screenSize.y);
+    if (!g_subtitleSettings.autoPosition)
         ImGui::DragFloat2("Subtitle position", (float*)&g_subtitleSettings.position, 1.0f, 0.0f, screenSize.x);
-    }
 
-    ImGui::SliderFloat("Font Scale", &g_subtitleSettings.scale, 0.5f, 3.0f);
+    ImGui::Checkbox("Scale with resolution", &g_subtitleSettings.autoScale);
+    ImGui::SliderFloat("Base font size", &g_subtitleSettings.fontSize, 8.0f, 120.0f, "%.0f px");
+    ImGui::SliderFloat("Font scale", &g_subtitleSettings.scale, 0.5f, 3.0f);
+    if (g_subtitleSettings.autoScale)
+        ImGui::SliderFloat("Reference height", &g_subtitleSettings.referenceHeight, 480.0f, 4320.0f, "%.0f px");
+    ImGui::Text("Effective font size: %.1f px", subtitleFontSize(g_subtitleSettings, screenSize));
+    ImGui::SliderFloat("Maximum width", &g_subtitleSettings.maxWidthPercent, 20.0f, 100.0f, "%.0f%%");
+    ImGui::TextWrapped("Long subtitles wrap automatically. Base size is measured at the reference height when resolution scaling is enabled.");
 
     if (ImGui::Button("Reset to defaults"))
     {
-        ImVec2 screenSize = io.DisplaySize;
-        g_subtitleSettings.autoPosition = true;
-        g_subtitleSettings.position = ImVec2(screenSize.x / 2.0f, screenSize.y - 100.0f);
-        g_subtitleSettings.padding = ImVec2(8, -25);
-        g_subtitleSettings.textColor = ImVec4(1, 1, 1, 1);
-        g_subtitleSettings.backgroundColor = ImVec4(0, 0, 0, 0.5f);
-        g_subtitleSettings.scale = 1.0f;
+        ImFont* font = g_subtitleSettings.font;
+        g_subtitleSettings = SubtitleSettings{};
+        g_subtitleSettings.font = font;
     }
 
     ImGui::Separator();
@@ -213,72 +214,36 @@ void SubtitleOverlay::render(HWND window)
     std::wstring reshapedW = ShapingEngine::wrender(ShapingEngine::Helper::widen(m_currentText));
     std::string reshaped = ShapingEngine::Helper::narrow(reshapedW);
 
+    // Win32 refreshes DisplaySize from the game's client area every frame,
+    // including fullscreen resolution changes. Never use desktop dimensions.
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    if (display.x <= 0 || display.y <= 0) return;
+    ImGui::PushFont(g_subtitleSettings.font, subtitleFontSize(g_subtitleSettings, display));
+    const auto layout = measureSubtitle(g_subtitleSettings, display, reshaped.c_str());
+
     ImGui::PushStyleColor(ImGuiCol_WindowBg, g_subtitleSettings.backgroundColor);
+    ImGui::PushStyleColor(ImGuiCol_Text, g_subtitleSettings.textColor);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(1, 1));
+    ImGui::SetNextWindowPos(layout.position, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(layout.size, ImGuiCond_Always);
 
-    float fontSize = g_subtitleSettings.fontSize * g_subtitleSettings.scale;
-
-    if (g_subtitleSettings.font) {
-        ImGui::PushFont(g_subtitleSettings.font);
-        ImGui::PushFont(NULL, fontSize);
-    }
-
-    ImVec2 textSize = ImGui::CalcTextSize(reshaped.c_str());
-
-    if (g_subtitleSettings.font) {
-        ImGui::PopFont();
-        ImGui::PopFont();
-    }
-
-    ImVec2 totalSize = {
-        textSize.x + g_subtitleSettings.padding.x,
-        textSize.y + g_subtitleSettings.padding.y
-    };
-
-    ImVec2 pos = {
-        g_subtitleSettings.position.x - totalSize.x * 0.5f,
-        g_subtitleSettings.position.y - totalSize.y * 0.5f
-    };
-
-    ImGui::SetNextWindowPos(pos, ImGuiCond_Always);
-    ImGui::SetNextWindowSize(totalSize, ImGuiCond_Always);
-
-    ImGuiWindowFlags flags =
-        ImGuiWindowFlags_NoTitleBar |
-        ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoScrollbar |
-        ImGuiWindowFlags_NoSavedSettings;
-
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoBringToFrontOnFocus;
     if (ImGui::Begin("SubtitleOverlay", nullptr, flags))
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, g_subtitleSettings.textColor);
-
-        float fontSize = g_subtitleSettings.fontSize * g_subtitleSettings.scale;
-
-        if (g_subtitleSettings.font)
-        {
-            ImGui::PushFont(g_subtitleSettings.font);
-            ImGui::PushFont(NULL,fontSize);
-        }
-
-        ImGui::SetCursorPosX((ImGui::GetWindowSize().x - textSize.x) * 0.5f);
-        ImGui::SetCursorPosY((ImGui::GetWindowSize().y - textSize.y) * 0.5f);
-
+        ImGui::SetCursorPos(layout.padding);
+        // Measurement and drawing must use precisely the same wrap width.
+        ImGui::PushTextWrapPos(layout.padding.x + layout.wrapWidth);
         ImGui::TextUnformatted(reshaped.c_str());
-
-        if (g_subtitleSettings.font)
-        {
-            ImGui::PopFont();
-            ImGui::PopFont();
-        }
-
-        ImGui::PopStyleColor();
+        ImGui::PopTextWrapPos();
     }
-
     ImGui::End();
-
-    ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(4);
+    ImGui::PopStyleColor(2);
+    ImGui::PopFont();
 }

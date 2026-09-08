@@ -42,9 +42,13 @@ bool SubtitleConfig::load()
         g_subtitleSettings.position.y = ini.Get<float>("Subtitle", "SubtitlePosY", 980.0f);
 
         g_subtitleSettings.padding.x = ini.Get<float>("Subtitle", "PaddingX", 8);
-        g_subtitleSettings.padding.y = ini.Get<float>("Subtitle", "PaddingY", -25);
+        g_subtitleSettings.padding.y = ini.Get<float>("Subtitle", "PaddingY", 6);
 
         g_subtitleSettings.scale = ini.Get<float>("Subtitle", "SubtitleFontScale", 1.0f);
+        g_subtitleSettings.fontSize = ini.Get<float>("Subtitle", "SubtitleFontSize", 30.0f);
+        g_subtitleSettings.autoScale = ini.Get<bool>("Subtitle", "AutoScale", true);
+        g_subtitleSettings.referenceHeight = ini.Get<float>("Subtitle", "ReferenceHeight", 1080.0f);
+        g_subtitleSettings.maxWidthPercent = ini.Get<float>("Subtitle", "MaxWidthPercent", 90.0f);
 
         g_subtitleSettings.textColor.x = ini.Get<float>("Subtitle", "SubtitleColorR", 1.0f);
         g_subtitleSettings.textColor.y = ini.Get<float>("Subtitle", "SubtitleColorG", 1.0f);
@@ -80,6 +84,10 @@ bool SubtitleConfig::save() const
         ini.InsertEntry("Subtitle", "PaddingY", g_subtitleSettings.padding.y);
 
         ini.InsertEntry("Subtitle", "SubtitleFontScale", g_subtitleSettings.scale);
+        ini.InsertEntry("Subtitle", "SubtitleFontSize", g_subtitleSettings.fontSize);
+        ini.InsertEntry("Subtitle", "AutoScale", g_subtitleSettings.autoScale);
+        ini.InsertEntry("Subtitle", "ReferenceHeight", g_subtitleSettings.referenceHeight);
+        ini.InsertEntry("Subtitle", "MaxWidthPercent", g_subtitleSettings.maxWidthPercent);
 
         ini.InsertEntry("Subtitle", "SubtitleColorR", g_subtitleSettings.textColor.x);
         ini.InsertEntry("Subtitle", "SubtitleColorG", g_subtitleSettings.textColor.y);
