@@ -48,7 +48,7 @@ bool SubtitleConfig::load()
         g_subtitleSettings.fontSize = ini.Get<float>("Subtitle", "SubtitleFontSize", 30.0f);
         g_subtitleSettings.autoScale = ini.Get<bool>("Subtitle", "AutoScale", true);
         g_subtitleSettings.referenceHeight = ini.Get<float>("Subtitle", "ReferenceHeight", 1080.0f);
-        g_subtitleSettings.maxWidthPercent = ini.Get<float>("Subtitle", "MaxWidthPercent", 90.0f);
+        g_subtitleSettings.maxWidthPercent = ini.Get<float>("Subtitle", "MaxWidthPercent", 75.0f);
 
         g_subtitleSettings.textColor.x = ini.Get<float>("Subtitle", "SubtitleColorR", 1.0f);
         g_subtitleSettings.textColor.y = ini.Get<float>("Subtitle", "SubtitleColorG", 1.0f);

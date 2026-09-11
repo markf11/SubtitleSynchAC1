@@ -236,11 +236,13 @@ void SubtitleOverlay::render(HWND window)
         ImGuiWindowFlags_NoBringToFrontOnFocus;
     if (ImGui::Begin("SubtitleOverlay", nullptr, flags))
     {
-        ImGui::SetCursorPos(layout.padding);
-        // Measurement and drawing must use precisely the same wrap width.
-        ImGui::PushTextWrapPos(layout.padding.x + layout.wrapWidth);
-        ImGui::TextUnformatted(reshaped.c_str());
-        ImGui::PopTextWrapPos();
+        // Draw the measured lines individually so short final lines share
+        // the same horizontal center as the rest of the subtitle block.
+        const ImVec2 origin = ImGui::GetWindowPos();
+        const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);
+        for (const auto& line : layout.lines)
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2(origin.x + line.offset.x, origin.y + line.offset.y), color, line.text.c_str());
     }
     ImGui::End();
     ImGui::PopStyleVar(4);

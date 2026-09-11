@@ -13,7 +13,7 @@ Open **F1** for a live preview and settings, then **Save to .ini** to persist:
 | Base font size | `SubtitleFontSize` | `30` |
 | Font scale (existing multiplier) | `SubtitleFontScale` | `1` |
 | Reference height | `ReferenceHeight` | `1080` |
-| Maximum width | `MaxWidthPercent` | `90` |
+| Maximum width | `MaxWidthPercent` | `75` |
 
 Effective size = base size × font scale × game display height / reference height.
 When `AutoScale=0`, omit the last ratio. For the default settings, font sizes
@@ -23,7 +23,7 @@ The F1 panel shows current display dimensions and effective font size.
 
 Automatic wrapping is always enabled. It measures the shaped UTF-8 text using
 the same font, effective size and width used to draw it. The width percentage
-includes horizontal background padding. Explicit newlines are preserved, and
+includes horizontal background padding. Each wrapped or explicit line is centered independently. Explicit newlines are preserved, and
 long words can wrap as needed. The background grows with the text block.
 Auto position centers the block horizontally and grows it upward from a bottom
 margin of 100 px at 1080p (scaled with height). Manual positions are constrained
@@ -41,7 +41,7 @@ only the ASI with the new build; keep the installed loader, subtitle JSON, font
 and INI. Add the keys above manually or use F1 and save. Restore the backed-up
 ASI and INI with the game closed to revert. The patch ZIP contains no database.
 
-The diagnostic startup tag is now `audio-sync-v3-layout`. Audio synchronization
+The diagnostic startup tag is now `audio-sync-v4-centered`. Audio synchronization
 was confirmed working by the user; the new layout has automated ImGui font
 measurement tests at 720p, 1080p, 4K and portrait dimensions. In-game visual
 acceptance of the new layout remains a separate check.

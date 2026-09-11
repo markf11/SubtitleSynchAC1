@@ -14,7 +14,7 @@ struct SubtitleSettings
     float fontSize = 30.0f;
     bool autoScale = true;
     float referenceHeight = 1080.0f;
-    float maxWidthPercent = 90.0f;
+    float maxWidthPercent = 75.0f;
 
     bool autoPosition = true;
 

@@ -1,9 +1,18 @@
 #pragma once
 #include "subtitle_settings.h"
+#include <string>
+#include <vector>
+
+struct SubtitleLine {
+    std::string text;
+    ImVec2 offset;
+    float width;
+};
 
 struct SubtitleLayout {
     ImVec2 position, size, padding;
     float wrapWidth;
+    std::vector<SubtitleLine> lines;
 };
 
 float subtitleFontSize(const SubtitleSettings& settings, ImVec2 display);
