@@ -2616,5 +2616,9 @@
   "0x20e7004b": "We had a deal, brother. <wait=1.32> Honor your end of it, and I will honor mine. <duration=3.43>",
   "0x20e7004c": "Well done, Altaïr. With those archers dead, I can be about my business. <wait=4.4> Take this. It's some sort of work order for repairs to Garnier's hospital. <wait=3.92> Perhaps it'll be of use to you. <duration=9.41>",
   "0x20a80305": "I applied my heart to know wisdom, and to know madness and folly. <wait=6.16> I perceived that this also was a chasing after wind, for in much wisdom is much grief. <duration=13.6>",
-  "0x20a80306": "And he that increaseth knowledge, increaseth sorrow. <duration=5.56>"
+  "0x20a80306": "And he that increaseth knowledge, increaseth sorrow. <duration=5.56>",
+  "0x20b5000d": "What do you know of my work? <duration=4.637>",
+  "0x20b5000c": "For Conrad? <wait=2.46> My son is an arse, unfit to lead his host, let alone a kingdom! <wait=4.86> And Richard? The Oc et Non is no better, <wait=3.2> blinded as he is by faith in the insubstantial. <wait=3.62> Acre does not belong to either of them. <duration=19.133>",
+  "0x20b5000b": "The city belongs to its people. <duration=5.319>",
+  "0x20b5000a": "Everything I did, I did to prepare them for the new world. <wait=3.68> Stole their food? <wait=1.46> No, I took possession so that when the lean times came, it might be rationed properly. <duration=13.987>"
 }
