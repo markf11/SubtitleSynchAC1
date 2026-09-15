@@ -2,17 +2,21 @@
 #include "playback_clock.h"
 #include "pattern_scan.h"
 #include "diagnostics.h"
+#include "audio_system.h"
 #include <Windows.h>
 #include <MinHook.h>
 #include <xbyak/xbyak.h>
 #include <memory>
 
-PlaybackClock g_playbackClock;
 namespace {
 std::unique_ptr<Xbyak::CodeGenerator> stubs[2];
 void __cdecl observePause(unsigned playing) noexcept {
-    if (g_playbackClock.setPaused(playing == 0))
-        Diagnostics::log("playback_pause paused=%u", playing == 0);
+    const bool paused = playing == 0;
+    if (!g_playbackClock.setPaused(paused)) return;
+    // Clear events captured around both transition boundaries. The current
+    // subtitle remains in SubtitleRuntime and its logical deadline is frozen.
+    const auto discarded = g_AudioQueue.discardAll();
+    Diagnostics::log("playback_pause paused=%u queue_discarded=%zu", paused, discarded);
 }
 }
 

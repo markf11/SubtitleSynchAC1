@@ -19,6 +19,7 @@ public:
     static constexpr size_t Capacity = 1024;
     bool push(const AudioEvent& event);
     bool pop(AudioEvent& event);
+    size_t discardAll();
     uint32_t takeDropped() { return m_dropped.exchange(0); }
 private:
     std::mutex m_mutex;

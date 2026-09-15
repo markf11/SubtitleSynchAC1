@@ -17,6 +17,7 @@ add_library(SubtitleSynchAC1 SHARED
     src/subtitle_runtime.cpp
     src/subtitle_core.cpp
     src/audio_system.cpp
+    src/playback_clock.cpp
     src/audio_resolver.cpp
     src/overlay_ui.cpp
     src/subtitle_layout.cpp
@@ -124,7 +125,7 @@ include(CTest)
 add_executable(replay_events tools/replay_events.cpp src/subtitle_core.cpp src/subtitle_runtime.cpp)
 target_include_directories(replay_events PRIVATE include)
 if(BUILD_TESTING)
-    add_executable(pause_tests tests/pause_tests.cpp src/subtitle_runtime.cpp
+    add_executable(pause_tests tests/pause_tests.cpp src/subtitle_runtime.cpp src/audio_system.cpp src/playback_clock.cpp
         src/hooks/pause_hooks.cpp src/pattern_scan.cpp src/pattern_match.cpp src/diagnostics.cpp)
     target_include_directories(pause_tests PRIVATE include external/xbyak)
     target_compile_definitions(pause_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
@@ -144,7 +145,7 @@ if(BUILD_TESTING)
         src/subtitle_runtime.cpp src/audio_system.cpp src/audio_resolver.cpp src/pattern_match.cpp)
     target_include_directories(subtitle_tests PRIVATE include)
     add_test(NAME subtitle_tests COMMAND subtitle_tests)
-    add_executable(hook_tests tests/hook_tests.cpp src/hooks/asm_hooks.cpp
+    add_executable(hook_tests tests/hook_tests.cpp src/hooks/asm_hooks.cpp src/playback_clock.cpp
         src/audio_system.cpp src/audio_resolver.cpp src/diagnostics.cpp src/pattern_scan.cpp src/pattern_match.cpp)
     target_include_directories(hook_tests PRIVATE include external/xbyak)
     target_compile_definitions(hook_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)

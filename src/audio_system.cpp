@@ -21,3 +21,10 @@ bool AudioQueue::pop(AudioEvent& event) {
     --m_count;
     return true;
 }
+
+size_t AudioQueue::discardAll() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const size_t discarded = m_count;
+    m_head = m_tail = m_count = 0;
+    return discarded;
+}

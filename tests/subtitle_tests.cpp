@@ -66,6 +66,9 @@ int main() {
         check(queue.pop(event) && event.timestampMs == 2, "first playback");
         check(queue.pop(event) && event.timestampMs == 3, "repeated playback preserved");
         check(!queue.pop(event), "empty queue");
+        check(queue.push({11,0,0}) && queue.push({12,0,0}) && queue.discardAll() == 2,
+              "pause transition discards queued events");
+        check(!queue.pop(event), "discard leaves queue empty");
         for (size_t i=0; i<AudioQueue::Capacity; ++i) check(queue.push({42,0,i}), "fill queue");
         check(!queue.push({42,0,0}) && queue.takeDropped() == 1, "overflow counted");
         while (queue.pop(event)) {}

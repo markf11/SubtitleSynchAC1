@@ -3,6 +3,7 @@
 #include "audio_system.h"
 #include "diagnostics.h"
 #include "pattern_scan.h"
+#include "playback_clock.h"
 #include <Windows.h>
 #include <MinHook.h>
 #include <xbyak/xbyak.h>
@@ -16,6 +17,9 @@ bool ReadGameAudio(uintptr_t address, void* output, size_t size) {
         output, size, &copied) && copied == size;
 }
 void __cdecl PushAudioEvent(uint32_t rawId, uintptr_t manager, uint32_t handle) noexcept {
+    // Menu/UI audio callbacks continue while the game is paused. They must not
+    // be replayed as dialogue when gameplay resumes.
+    if (g_playbackClock.paused()) return;
     const auto audio = resolveAudio(rawId, manager, handle, &ReadGameAudio);
     g_AudioQueue.push({audio.id, GetCurrentThreadId(), GetTickCount64(), rawId, audio.resolution});
 }

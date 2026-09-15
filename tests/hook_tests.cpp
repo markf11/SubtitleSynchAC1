@@ -1,5 +1,6 @@
 #include "hooks/asm_hooks.h"
 #include "audio_system.h"
+#include "playback_clock.h"
 #include <Windows.h>
 #include <MinHook.h>
 #include <xbyak/xbyak.h>
@@ -42,14 +43,17 @@ int main() {
     auto run = caller.getCode<unsigned(*)()>();
     if (run() != 0x12345678 || calls != 1) return 1;
     if (MH_Initialize() != MH_OK || !AudioHook::Install(site)) return 2;
-    if (run() != 0x12345678 || run() != 0x12345678 || calls != 3) return 3;
     AudioEvent event;
+    g_playbackClock.setPaused(true);
+    if (run() != 0x12345678 || calls != 2 || g_AudioQueue.pop(event)) return 3;
+    g_playbackClock.setPaused(false);
+    if (run() != 0x12345678 || run() != 0x12345678 || calls != 4) return 4;
     for (int i=0; i<2; ++i)
         if (!g_AudioQueue.pop(event) || event.id != 0x20a802f9 || event.rawId != 0x10a80305 ||
-            event.resolution != Resolution::DirectReference || !event.threadId) return 4;
-    if (g_AudioQueue.pop(event)) return 5;
+            event.resolution != Resolution::DirectReference || !event.threadId) return 5;
+    if (g_AudioQueue.pop(event)) return 6;
     MH_DisableHook(reinterpret_cast<void*>(site));
     MH_Uninitialize();
-    if (run() != 0x12345678 || calls != 4) return 6;
-    std::cout << "PASS: native x86 detour preserves original CALL/result/ESI and repeated events\n";
+    if (run() != 0x12345678 || calls != 5) return 7;
+    std::cout << "PASS: native x86 detour preserves CALL/result/ESI, drops paused callbacks and repeats events\n";
 }
