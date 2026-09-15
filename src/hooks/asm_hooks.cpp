@@ -22,8 +22,8 @@ void __cdecl PushAudioEvent(uint32_t rawId, uintptr_t manager, uint32_t handle) 
 }
 
 bool applyASMPatches() {
-    // The old pause stubs only replayed original instructions, with a decimal
-    // 108 typo instead of 0x108. Leaving those sites untouched preserves both.
+    // Pause tracking is installed separately, preserving the game's original
+    // 0x108 displacement through MinHook relocation.
     const auto address = PatternScan::Find(AudioHook::Pattern);
     if (!address) {
         Diagnostics::error("audio hook requires exactly one executable-section match; subtitles disabled");

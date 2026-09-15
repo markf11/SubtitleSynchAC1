@@ -5,6 +5,7 @@
 #include "hooks/asm_hooks.h"
 #include "globals.h"
 #include "diagnostics.h"
+#include "playback_clock.h"
 
 void ModRuntime::init(void) {
     std::string baseDir = std::filesystem::path(dllPath).parent_path().string();
@@ -15,6 +16,7 @@ void ModRuntime::init(void) {
         Diagnostics::error("subtitle database could not be loaded");
     } else {
         applyASMPatches();
+        PauseHook::InstallGameHooks();
     }
     m_overlay.init();
 }
@@ -31,8 +33,9 @@ void ModRuntime::update(void) {
     const auto dropped = g_AudioQueue.takeDropped();
     if (dropped) Diagnostics::log("queue_dropped count=%u", dropped);
     AudioEvent event;
+    const auto playback = g_playbackClock.state();
     // Bound render-thread work even if producers keep adding events.
-    for (size_t n = 0; n < AudioQueue::Capacity && g_AudioQueue.pop(event); ++n)
+    for (size_t n = 0; !playback.paused && n < AudioQueue::Capacity && g_AudioQueue.pop(event); ++n)
     {
         Diagnostics::log("audio event_t=%llu thread=%lu id=0x%08lx raw=0x%08lx resolution=%lu",
             static_cast<unsigned long long>(event.timestampMs),
@@ -42,7 +45,7 @@ void ModRuntime::update(void) {
         handleVoiceline(event.id);
     }
 
-    m_runtime.update();
+    m_runtime.update(playback.now);
 
     bool visible = m_runtime.active();
     std::string text = m_runtime.currentText();
@@ -79,7 +82,7 @@ bool ModRuntime::handleVoiceline(uint32_t id)
     Diagnostics::log("subtitle_start id=0x%08lx replaces_active=%d segments=%zu duration=%.3f",
         static_cast<unsigned long>(id), m_runtime.active(), segments.size(), duration);
     m_runtime.start(segments, std::chrono::duration_cast<SubtitleRuntime::clock::duration>(
-        std::chrono::duration<double>(duration)));
+        std::chrono::duration<double>(duration)), g_playbackClock.state().now);
     m_overlay.setSegments(segments);
     m_overlay.setVisible(true);
     return true;
