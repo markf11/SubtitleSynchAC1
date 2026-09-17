@@ -7,6 +7,7 @@
 #include "audio_system.h"
 #include "overlay_ui.h"
 #include "ini_config.h"
+#include "playback_clock.h"
 
 class ModRuntime {
 public:
@@ -28,4 +29,5 @@ public:
     std::string m_lastDiagnosticText;
     bool m_lastDiagnosticVisible = false;
     bool m_lastDiagnosticPaused = false;
+    EscapePauseTracker m_escapePause;
 };

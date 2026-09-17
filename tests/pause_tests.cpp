@@ -10,6 +10,13 @@
 void check(bool condition, const char* reason) { if (!condition) throw std::runtime_error(reason); }
 int main() {
     try {
+        EscapePauseTracker escape;
+        check(!escape.consume(false), "released Escape has no edge");
+        check(escape.consume(true), "first Escape press opens the menu");
+        check(!escape.consume(true), "holding Escape does not repeat");
+        check(!escape.consume(false), "Escape release does not toggle");
+        check(escape.consume(true), "second Escape press closes the menu");
+
         PlaybackClock clock;
         SubtitleRuntime runtime;
         const auto zero = PlaybackClock::Clock::time_point{};

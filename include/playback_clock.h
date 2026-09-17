@@ -31,3 +31,15 @@ private:
 };
 extern PlaybackClock g_playbackClock;
 constexpr bool playbackSubtitleVisible(bool active, bool paused) { return active && !paused; }
+
+class EscapePauseTracker {
+public:
+    bool consume(bool escapeDown) {
+        const bool pressed = escapeDown && !m_escapeDown;
+        m_escapeDown = escapeDown;
+        return pressed;
+    }
+
+private:
+    bool m_escapeDown = false;
+};

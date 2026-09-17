@@ -16,7 +16,10 @@ void ModRuntime::init(void) {
         Diagnostics::error("subtitle database could not be loaded");
     } else {
         applyASMPatches();
-        PauseHook::InstallGameHooks();
+        // The old executable signatures do not represent the ESC pause menu
+        // in the installed DX10 build. Menu pause is observed from the ESC
+        // edge in update(), where every Present frame is available.
+        Diagnostics::log("pause_tracking source=escape-edge");
     }
     m_overlay.init();
 }
@@ -32,6 +35,18 @@ void ModRuntime::update(void) {
 
     const auto dropped = g_AudioQueue.takeDropped();
     if (dropped) Diagnostics::log("queue_dropped count=%u", dropped);
+
+    const bool gameHasFocus = GetForegroundWindow() == m_window;
+    const bool escapeDown = gameHasFocus && (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+    if (m_escapePause.consume(escapeDown)) {
+        const bool paused = !g_playbackClock.paused();
+        if (g_playbackClock.setPaused(paused)) {
+            const auto discarded = g_AudioQueue.discardAll();
+            Diagnostics::log("playback_pause paused=%u queue_discarded=%zu source=escape",
+                paused, discarded);
+        }
+    }
+
     AudioEvent event;
     const auto playback = g_playbackClock.state();
     // Bound render-thread work even if producers keep adding events.
