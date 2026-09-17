@@ -1,7 +1,6 @@
 #include <imgui.h>
 #include <chrono>
 #include <misc/cpp/imgui_stdlib.h>
-#include <array>
 
 #include "overlay_ui.h"
 #include "reshaper/arabic.h"
@@ -138,7 +137,7 @@ void SubtitleOverlay::advanceSegment()
 
 
 void SubtitleOverlay::drawDebugWindow() {
-    ImGui::SetNextWindowSize(ImVec2(450, 650), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(450, 430), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(0, 0));
 
     ImGui::Begin("SubtitleSynchAC1 by bloxtbc", &m_debugWindow, ImGuiWindowFlags_None);
@@ -148,43 +147,15 @@ void SubtitleOverlay::drawDebugWindow() {
     ImGui::TextWrapped("This mod was developed and created by bloxtbc on NexusMods, support me and report any bugs if there are any on the NexusMods page for SubtitleSynchAC1.");
 
     ImGui::Checkbox("Show subtitle", &m_debugVisible);
-    ImGui::Checkbox("Auto position", &g_subtitleSettings.autoPosition);
-
-    ImGui::ColorEdit4("Text Color", (float*)&g_subtitleSettings.textColor);
-    ImGui::ColorEdit4("Background Color", (float*)&g_subtitleSettings.backgroundColor);
-
     ImGui::Text("Loaded font: %s", g_subtitleSettings.font ? "yes" : "no");
 
     ImGuiIO& io = ImGui::GetIO();
-    ImGui::Text("Mouse: %.1f %.1f", io.MousePos.x, io.MousePos.y);
-
-    ImGui::DragFloat2("Padding", (float*)&g_subtitleSettings.padding, 0.5f, 0.0f, 100.0f);
     const ImVec2 screenSize = io.DisplaySize;
     ImGui::Text("Game display: %.0f x %.0f", screenSize.x, screenSize.y);
-    if (!g_subtitleSettings.autoPosition)
-        ImGui::DragFloat2("Subtitle position", (float*)&g_subtitleSettings.position, 1.0f, 0.0f, screenSize.x);
-
-    ImGui::Checkbox("Scale with resolution", &g_subtitleSettings.autoScale);
-    ImGui::SliderFloat("Base font size", &g_subtitleSettings.fontSize, 8.0f, 120.0f, "%.0f px");
-    ImGui::SliderFloat("Font scale", &g_subtitleSettings.scale, 0.5f, 3.0f);
-    if (g_subtitleSettings.autoScale)
-        ImGui::SliderFloat("Reference height", &g_subtitleSettings.referenceHeight, 480.0f, 4320.0f, "%.0f px");
+    ImGui::SliderFloat("Subtitle scale", &g_subtitleSettings.scale, 0.5f, 3.0f);
     ImGui::Text("Effective font size: %.1f px", subtitleFontSize(g_subtitleSettings, screenSize));
-    ImGui::SliderFloat("Maximum width", &g_subtitleSettings.maxWidthPercent, 20.0f, 100.0f, "%.0f%%");
-    ImGui::SliderInt("Resume delay after Escape", &g_subtitleSettings.resumeDelayMs, 0, 1500, "%d ms");
-    ImGui::SliderInt("Subtitle tail extension", &g_subtitleSettings.tailExtensionMs, 0, 5000, "%d ms");
-    ImGui::SliderFloat("Bottom margin", &g_subtitleSettings.bottomMargin, 0.0f, 400.0f, "%.0f px");
-    ImGui::SliderFloat("Lift while saving", &g_subtitleSettings.saveIndicatorLift, 0.0f, 400.0f, "%.0f px");
-    ImGui::SliderInt("Save indicator duration", &g_subtitleSettings.saveIndicatorDurationMs, 0, 10000, "%d ms");
     ImGui::Text("Save activity: %s", m_saveIndicatorActive ? "detected" : "idle");
-    ImGui::TextWrapped("Long subtitles wrap automatically. Base size is measured at the reference height when resolution scaling is enabled.");
-
-    if (ImGui::Button("Reset to defaults"))
-    {
-        ImFont* font = g_subtitleSettings.font;
-        g_subtitleSettings = SubtitleSettings{};
-        g_subtitleSettings.font = font;
-    }
+    ImGui::TextWrapped("Resolution scaling, wrapping, centering and save-indicator positioning are automatic. Advanced settings remain available in SubtitleSynchAC1.ini.");
 
     ImGui::Separator();
 
