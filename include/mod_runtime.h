@@ -27,4 +27,5 @@ public:
     bool m_paused = false;
     std::string m_lastDiagnosticText;
     bool m_lastDiagnosticVisible = false;
+    bool m_lastDiagnosticPaused = false;
 };

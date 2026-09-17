@@ -47,10 +47,12 @@ void ModRuntime::update(void) {
 
     m_runtime.update(playback.now);
 
-    bool visible = m_runtime.active();
+    // Keep the current subtitle in the frozen runtime, but do not draw it over
+    // the game's pause menu. Resuming reveals the same segment again.
+    bool visible = playbackSubtitleVisible(m_runtime.active(), playback.paused);
     std::string text = m_runtime.currentText();
     if (m_overlay.isDebugWindowVisible()) {
-        visible = m_overlay.isDebugVisible();
+        visible = m_overlay.isDebugVisible() && !playback.paused;
         text = m_overlay.debugText();
     }
 
@@ -58,9 +60,15 @@ void ModRuntime::update(void) {
     m_overlay.setText(text);
 
     if (Diagnostics::enabled() && (visible != m_lastDiagnosticVisible || text != m_lastDiagnosticText)) {
-        Diagnostics::log("display visible=%d bytes=%zu debug=%d", visible, text.size(), m_overlay.isDebugWindowVisible());
+        Diagnostics::log("display visible=%d bytes=%zu debug=%d paused=%d", visible, text.size(),
+            m_overlay.isDebugWindowVisible(), playback.paused);
         m_lastDiagnosticVisible = visible;
         m_lastDiagnosticText = text;
+    }
+    if (Diagnostics::enabled() && playback.paused != m_lastDiagnosticPaused) {
+        Diagnostics::log("playback_state paused=%d subtitle_active=%d text_bytes=%zu",
+            playback.paused, m_runtime.active(), text.size());
+        m_lastDiagnosticPaused = playback.paused;
     }
 
     m_overlay.render(m_window);

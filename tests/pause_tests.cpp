@@ -17,11 +17,13 @@ int main() {
         runtime.start({{"first", 2}, {"second", 0}}, seconds(5), clock.state(zero).now);
         clock.setPaused(true, zero+seconds(1));
         check(clock.paused(), "fast callback state reports pause");
+        check(!playbackSubtitleVisible(runtime.active(), clock.paused()), "active subtitle hidden in menu");
         check(!clock.setPaused(true, zero+seconds(20)), "repeated pause must not move the pause boundary");
         runtime.update(clock.state(zero+seconds(100)).now);
         check(runtime.currentText()=="first", "long pause keeps the current segment");
         clock.setPaused(false, zero+seconds(101));
         check(!clock.paused(), "fast callback state reports resume");
+        check(playbackSubtitleVisible(runtime.active(), clock.paused()), "same active subtitle returns after menu");
         runtime.update(clock.state(zero+milliseconds(101999)).now);
         check(runtime.currentText()=="first", "remaining segment time preserved");
         runtime.update(clock.state(zero+seconds(102)).now);

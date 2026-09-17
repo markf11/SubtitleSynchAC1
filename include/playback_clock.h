@@ -30,3 +30,4 @@ private:
     Clock::duration m_excluded{};
 };
 extern PlaybackClock g_playbackClock;
+constexpr bool playbackSubtitleVisible(bool active, bool paused) { return active && !paused; }
