@@ -37,13 +37,17 @@ void ModRuntime::update(void) {
     if (dropped) Diagnostics::log("queue_dropped count=%u", dropped);
 
     const bool gameHasFocus = GetForegroundWindow() == m_window;
-    const bool escapeDown = gameHasFocus && (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
-    if (m_escapePause.consume(escapeDown)) {
-        const bool paused = !g_playbackClock.paused();
+    EscapePauseAction pauseAction = EscapePauseAction::None;
+    if (gameHasFocus) {
+        const bool escapeDown = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+        pauseAction = m_escapePause.update(escapeDown, g_playbackClock.paused());
+    }
+    if (pauseAction != EscapePauseAction::None) {
+        const bool paused = pauseAction == EscapePauseAction::Pause;
         if (g_playbackClock.setPaused(paused)) {
             const auto discarded = g_AudioQueue.discardAll();
-            Diagnostics::log("playback_pause paused=%u queue_discarded=%zu source=escape",
-                paused, discarded);
+            Diagnostics::log("playback_pause paused=%u queue_discarded=%zu source=%s",
+                paused, discarded, paused ? "escape-press" : "escape-release");
         }
     }
 

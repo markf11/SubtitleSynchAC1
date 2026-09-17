@@ -16,19 +16,23 @@ not to represent the ESC menu in the installed DX10 executable: the pause event
 arrived after the subtitle had already expired, and closing the menu produced no
 resume event. They are no longer installed. The render hook now observes the
 rising edge of Escape while the game window has focus. The first press freezes
-and hides the subtitle; holding the key cannot repeat the transition; the next
-press resumes and reveals it.
+and hides the subtitle; holding the key cannot repeat the transition. The next
+press marks the menu as closing, but the subtitle stays frozen and hidden until
+that Escape is released. This keeps the subtitle clock aligned with gameplay
+audio after the menu transition.
 
-Diagnostics report `build=audio-sync-v5.3-escape-pause`,
+Diagnostics report `build=audio-sync-v5.4-release-resume`,
 `pause_tracking source=escape-edge`, and
-`playback_pause paused=1/0 queue_discarded=N source=escape`. Unit tests cover Escape
-press/release edges, long/repeated pauses, retained
+`playback_pause paused=1 source=escape-press` followed by
+`paused=0 source=escape-release`. Unit tests cover deferred Escape release,
+long/repeated pauses, retained
 segment time and final expiry. A native x86 test executes both production
 observers and verifies the original state writes and CMP flags. Six CTest
 checks pass. The v5 log proved both game transitions fired, but also revealed
 that queued callbacks replaced the frozen subtitle after resume. v5.1 fixes
-that path. The v5.3 input path replaces the disproved executable observer; its
-actual-game behavior still needs acceptance testing.
+that path. The v5.4 input path also prevents the subtitle from running during
+the menu-closing keypress; its actual-game behavior still needs acceptance
+testing.
 
 For a manual check, open the pause menu during a long subtitle, wait longer than
 its normal duration, then resume. The same segment should resume with only its

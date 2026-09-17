@@ -11,11 +11,13 @@ void check(bool condition, const char* reason) { if (!condition) throw std::runt
 int main() {
     try {
         EscapePauseTracker escape;
-        check(!escape.consume(false), "released Escape has no edge");
-        check(escape.consume(true), "first Escape press opens the menu");
-        check(!escape.consume(true), "holding Escape does not repeat");
-        check(!escape.consume(false), "Escape release does not toggle");
-        check(escape.consume(true), "second Escape press closes the menu");
+        check(escape.update(false, false) == EscapePauseAction::None, "released Escape has no edge");
+        check(escape.update(true, false) == EscapePauseAction::Pause, "first Escape press pauses");
+        check(escape.update(true, true) == EscapePauseAction::None, "holding Escape does not repeat");
+        check(escape.update(false, true) == EscapePauseAction::None, "opening-key release stays paused");
+        check(escape.update(true, true) == EscapePauseAction::None, "closing press defers resume");
+        check(escape.update(true, true) == EscapePauseAction::None, "held closing key stays deferred");
+        check(escape.update(false, true) == EscapePauseAction::Resume, "closing-key release resumes");
 
         PlaybackClock clock;
         SubtitleRuntime runtime;
@@ -59,6 +61,6 @@ int main() {
             check(g_playbackClock.state().paused==(playing==0),"observe real state transition");
         }
         MH_DisableHook(MH_ALL_HOOKS); MH_Uninitialize();
-        std::cout<<"PASS: freeze/resume, repeated pauses, deadline preservation, native x86 state and flags\n";
+        std::cout<<"PASS: release-gated resume, repeated pauses, deadline preservation, native x86 state and flags\n";
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n'; return 1;}
 }
