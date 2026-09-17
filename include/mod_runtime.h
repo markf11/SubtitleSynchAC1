@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <vector>
 #include <Windows.h>
 
 #include "subtitle_runtime.h"
@@ -20,7 +21,7 @@ public:
     void onPause(bool paused);
     void onFocus(bool focused);
 
-    bool handleVoiceline(uint32_t id);
+    bool handleVoiceline(const AudioEvent& event);
 
     AudioQueue m_audio;
     SubtitleEngine m_engine;
@@ -44,8 +45,12 @@ public:
     uint32_t m_lastPauseManagerActiveCount = 0;
     uint32_t m_lastPauseManagerCommittedCount = 0;
     uint32_t m_activeSubtitleId = 0;
+    SubtitlePriority m_activeSubtitlePriority = SubtitlePriority::None;
     SubtitleRuntime::clock::time_point m_activeSubtitleStart{};
+    uint64_t m_activeSubtitleDisplayStartMs = 0;
+    double m_activeSubtitleBaseDuration = 0.0;
     double m_activeSubtitleDuration = 0.0;
+    std::vector<SubtitleSegment> m_activeSubtitleSegments;
     bool m_lastDiagnosticDebugWindow = false;
     bool m_lastDiagnosticDebugPreview = false;
     bool m_lastDiagnosticSaveActivity = false;

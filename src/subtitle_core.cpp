@@ -7,7 +7,14 @@
 
 SubtitleEngine g_SubtitleEngine;
 
-bool SubtitleEngine::load(const std::string& filepath) {
+bool shouldDisplaySubtitle(SubtitlePriority active, SubtitlePriority incoming) {
+    if (incoming == SubtitlePriority::None) return false;
+    return active != SubtitlePriority::Primary || incoming == SubtitlePriority::Primary;
+}
+
+bool SubtitleEngine::loadFile(
+    const std::string& filepath,
+    std::unordered_map<std::string, std::string>& destination) {
     std::ifstream file(filepath, std::ios::binary);
     if (!file) {
         printf("[SubtitleEngine] FAILED to open file: %s\n", filepath.c_str());
@@ -19,7 +26,7 @@ bool SubtitleEngine::load(const std::string& filepath) {
         std::istreambuf_iterator<char>()
     );
 
-    m_db.clear();
+    destination.clear();
     size_t pos = 0;
     size_t count = 0;
 
@@ -72,7 +79,7 @@ bool SubtitleEngine::load(const std::string& filepath) {
         }
 
         if (!key.empty()) {
-            m_db[key] = value;
+            destination[key] = value;
             count++;
         }
 
@@ -82,6 +89,15 @@ bool SubtitleEngine::load(const std::string& filepath) {
 
     printf("[SubtitleEngine] LOAD complete: %zu entries\n", count);
     return true;
+}
+
+bool SubtitleEngine::load(const std::string& filepath) {
+    m_secondaryDb.clear();
+    return loadFile(filepath, m_primaryDb);
+}
+
+bool SubtitleEngine::loadSecondary(const std::string& filepath) {
+    return loadFile(filepath, m_secondaryDb);
 }
 
 std::string SubtitleEngine::makeKey(uint32_t voiceId) {
@@ -94,8 +110,24 @@ std::string SubtitleEngine::getRaw(uint32_t voiceId) const
 {
     // Resource type bits are part of the ID. Do not turn arbitrary resources
     // into voice lines by replacing their high nibble with 0x2.
-    auto it = m_db.find(makeKey(voiceId));
-    return it != m_db.end() ? it->second : std::string{};
+    return getMatch(voiceId).raw;
+}
+
+SubtitleMatch SubtitleEngine::getMatch(uint32_t voiceId) const
+{
+    const auto key = makeKey(voiceId);
+    auto primary = m_primaryDb.find(key);
+    if (primary != m_primaryDb.end())
+        return { primary->second, SubtitlePriority::Primary };
+    auto secondary = m_secondaryDb.find(key);
+    if (secondary != m_secondaryDb.end())
+        return { secondary->second, SubtitlePriority::Secondary };
+    return {};
+}
+
+SubtitlePriority SubtitleEngine::getPriority(uint32_t voiceId) const
+{
+    return getMatch(voiceId).priority;
 }
 
 std::string SubtitleEngine::stripTags(const std::string& s) {

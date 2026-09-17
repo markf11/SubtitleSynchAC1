@@ -13,6 +13,8 @@ This project uses a memory hook to detect currently playing audio cues and rende
 - JSON-based subtitle mapping system
 - Lightweight ImGui overlay for rendering subtitles
 - Supports custom localization packs
+- Detailed timing capture for existing and missing subtitle IDs
+- Separate lower-priority ambient subtitle database
 
 ---
 
@@ -22,3 +24,8 @@ This project uses a memory hook to detect currently playing audio cues and rende
 2. It monitors currently playing sound events / sound IDs
 3. Each sound ID is matched against a local `subtitles.json` database
 4. If a match is found, the corresponding subtitle text is rendered in an ImGui overlay
+
+Capture and timing review are documented in
+[`docs/subtitle-capture.md`](docs/subtitle-capture.md). Ambient additions belong
+in `subtitles_secondary.json`; mission subtitles in `subtitles.json` always take
+display priority.

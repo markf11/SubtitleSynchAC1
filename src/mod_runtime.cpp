@@ -8,9 +8,20 @@
 #include "diagnostics.h"
 #include "playback_clock.h"
 
+namespace {
+const char* priorityName(SubtitlePriority priority) {
+    switch (priority) {
+    case SubtitlePriority::Primary: return "primary";
+    case SubtitlePriority::Secondary: return "secondary";
+    default: return "missing";
+    }
+}
+}
+
 void ModRuntime::init(void) {
     std::string baseDir = std::filesystem::path(dllPath).parent_path().string();
     std::string jsonPath = baseDir + "\\subtitles.json";
+    std::string secondaryJsonPath = baseDir + "\\subtitles_secondary.json";
 
     Diagnostics::init(baseDir);
     if (Diagnostics::enabled())
@@ -18,6 +29,14 @@ void ModRuntime::init(void) {
     if (!m_engine.load(jsonPath)) {
         Diagnostics::error("subtitle database could not be loaded");
     } else {
+        if (std::filesystem::exists(secondaryJsonPath)) {
+            if (!m_engine.loadSecondary(secondaryJsonPath))
+                Diagnostics::error("secondary subtitle database could not be loaded");
+            else
+                Diagnostics::log("secondary_database loaded path=%s", secondaryJsonPath.c_str());
+        } else {
+            Diagnostics::log("secondary_database absent path=%s", secondaryJsonPath.c_str());
+        }
         applyASMPatches();
         // The old executable signatures do not represent the ESC pause menu
         // in the installed DX10 build. Menu pause is observed from the ESC
@@ -57,6 +76,16 @@ void ModRuntime::update(void) {
                 m_lastEscapeReleaseMs = edgeTime;
         }
         pauseAction = m_escapePause.update(escapeDown, g_playbackClock.paused());
+        if (Diagnostics::captureEnabled() && (GetAsyncKeyState(VK_F2) & 1)) {
+            double elapsed = 0.0;
+            if (m_runtime.active())
+                elapsed = std::chrono::duration<double>(
+                    g_playbackClock.state().now - m_activeSubtitleStart).count();
+            Diagnostics::captureMarker(GetTickCount64(), m_activeSubtitleId,
+                priorityName(m_activeSubtitlePriority), elapsed, m_runtime.currentText());
+            Diagnostics::log("capture_marker key=F2 active_id=0x%08lx elapsed=%.3f",
+                static_cast<unsigned long>(m_activeSubtitleId), elapsed);
+        }
     }
     PauseManagerSnapshot pauseManager;
     if (Diagnostics::enabled() && m_pauseManagerProbe.sample(pauseManager)) {
@@ -129,19 +158,22 @@ void ModRuntime::update(void) {
             Diagnostics::log("paused_dialogue action=replay id=0x%08lx event_t=%llu remaining=%zu",
                 static_cast<unsigned long>(event.id),
                 static_cast<unsigned long long>(event.timestampMs), m_pausedDialogueEvents.size());
-            handleVoiceline(event.id);
+            handleVoiceline(event);
         }
     }
     // Bound render-thread work even if producers keep adding events.
     for (size_t n = 0; n < AudioQueue::Capacity && g_AudioQueue.pop(event); ++n)
     {
+        const auto eventPriority = m_engine.getPriority(event.id);
+        Diagnostics::captureAudio(event.timestampMs, event.id, event.rawId, event.threadId,
+            static_cast<uint32_t>(event.resolution), priorityName(eventPriority));
         Diagnostics::log("audio event_t=%llu thread=%lu id=0x%08lx raw=0x%08lx resolution=%lu",
             static_cast<unsigned long long>(event.timestampMs),
             static_cast<unsigned long>(event.threadId), static_cast<unsigned long>(event.id),
             static_cast<unsigned long>(event.rawId), static_cast<unsigned long>(event.resolution));
         if (event.resolution == Resolution::Unresolved) continue;
         if (queuePlayback.paused) {
-            if (m_engine.getRaw(event.id).empty()) {
+            if (eventPriority == SubtitlePriority::None) {
                 Diagnostics::log("paused_dialogue action=discard-unmapped id=0x%08lx",
                     static_cast<unsigned long>(event.id));
                 continue;
@@ -169,13 +201,22 @@ void ModRuntime::update(void) {
                 static_cast<unsigned long>(event.id), m_pausedDialogueEvents.size());
             continue;
         }
-        handleVoiceline(event.id);
+        handleVoiceline(event);
     }
 
     const auto playback = g_playbackClock.state();
     const auto runtimeUpdate = m_runtime.update(playback.now);
     if (runtimeUpdate.kind == SubtitleUpdateKind::SegmentChanged) {
         const auto elapsed = std::chrono::duration<double>(playback.now - m_activeSubtitleStart).count();
+        const auto captureNow = GetTickCount64();
+        if (runtimeUpdate.previousIndex < m_activeSubtitleSegments.size())
+            Diagnostics::captureSegment("subtitle_segment_end", captureNow, m_activeSubtitleId,
+                runtimeUpdate.previousIndex, elapsed,
+                m_activeSubtitleSegments[runtimeUpdate.previousIndex].text);
+        if (runtimeUpdate.currentIndex < m_activeSubtitleSegments.size())
+            Diagnostics::captureSegment("subtitle_segment_start", captureNow, m_activeSubtitleId,
+                runtimeUpdate.currentIndex, elapsed,
+                m_activeSubtitleSegments[runtimeUpdate.currentIndex].text);
         Diagnostics::log("subtitle_segment id=0x%08lx from=%zu to=%zu count=%zu elapsed=%.3f remaining=%.3f",
             static_cast<unsigned long>(m_activeSubtitleId), runtimeUpdate.previousIndex,
             runtimeUpdate.currentIndex, m_runtime.segmentCount(), elapsed,
@@ -183,12 +224,26 @@ void ModRuntime::update(void) {
     } else if (runtimeUpdate.kind == SubtitleUpdateKind::DurationExpired ||
                runtimeUpdate.kind == SubtitleUpdateKind::SegmentsExhausted) {
         const auto elapsed = std::chrono::duration<double>(playback.now - m_activeSubtitleStart).count();
+        const auto captureNow = GetTickCount64();
+        if (runtimeUpdate.previousIndex < m_activeSubtitleSegments.size())
+            Diagnostics::captureSegment("subtitle_segment_end", captureNow, m_activeSubtitleId,
+                runtimeUpdate.previousIndex, elapsed,
+                m_activeSubtitleSegments[runtimeUpdate.previousIndex].text);
+        Diagnostics::captureSubtitleEnd(m_activeSubtitleDisplayStartMs, captureNow,
+            m_activeSubtitleId, priorityName(m_activeSubtitlePriority), elapsed,
+            m_activeSubtitleBaseDuration, m_activeSubtitleDuration,
+            runtimeUpdate.kind == SubtitleUpdateKind::DurationExpired
+                ? "duration-expired" : "segments-exhausted", 0);
         Diagnostics::log("subtitle_end id=0x%08lx reason=%s segment=%zu elapsed=%.3f configured_duration=%.3f",
             static_cast<unsigned long>(m_activeSubtitleId),
             runtimeUpdate.kind == SubtitleUpdateKind::DurationExpired ? "duration-expired" : "segments-exhausted",
             runtimeUpdate.previousIndex, elapsed, m_activeSubtitleDuration);
         m_activeSubtitleId = 0;
+        m_activeSubtitlePriority = SubtitlePriority::None;
+        m_activeSubtitleDisplayStartMs = 0;
+        m_activeSubtitleBaseDuration = 0.0;
         m_activeSubtitleDuration = 0.0;
+        m_activeSubtitleSegments.clear();
     }
 
     // Keep the current subtitle in the frozen runtime, but do not draw it over
@@ -213,13 +268,16 @@ void ModRuntime::update(void) {
     m_overlay.setVisible(visible);
     m_overlay.setText(text);
 
-    if (Diagnostics::enabled() && (visible != m_lastDiagnosticVisible || text != m_lastDiagnosticText)) {
+    if (visible != m_lastDiagnosticVisible || text != m_lastDiagnosticText) {
         const char* reason = visible ? (debugWindow && debugPreview ? "debug-preview" : "game-subtitle")
             : playback.paused ? "pause-menu"
             : !m_runtime.active() ? "subtitle-inactive"
             : "empty-or-disabled";
-        Diagnostics::log("display visible=%d bytes=%zu debug_window=%d debug_preview=%d paused=%d reason=%s",
-            visible, text.size(), debugWindow, debugPreview, playback.paused, reason);
+        Diagnostics::captureDisplay(GetTickCount64(), visible, m_activeSubtitleId,
+            playback.paused, text);
+        if (Diagnostics::enabled())
+            Diagnostics::log("display visible=%d bytes=%zu debug_window=%d debug_preview=%d paused=%d reason=%s",
+                visible, text.size(), debugWindow, debugPreview, playback.paused, reason);
         m_lastDiagnosticVisible = visible;
         m_lastDiagnosticText = text;
     }
@@ -235,20 +293,40 @@ void ModRuntime::update(void) {
 }
 
 
-bool ModRuntime::handleVoiceline(uint32_t id)
+bool ModRuntime::handleVoiceline(const AudioEvent& event)
 {
-    const auto raw = m_engine.getRaw(id);
-    Diagnostics::log("lookup id=0x%08lx key=0x%08lx hit=%d",
-        static_cast<unsigned long>(id), static_cast<unsigned long>(id), !raw.empty());
-    if (raw.empty()) return false;
-    auto segments = SubtitleEngine::parseSegments(SubtitleEngine::stripTags(raw));
+    const uint32_t id = event.id;
+    const auto match = m_engine.getMatch(id);
+    Diagnostics::log("lookup id=0x%08lx key=0x%08lx hit=%d priority=%s",
+        static_cast<unsigned long>(id), static_cast<unsigned long>(id),
+        static_cast<bool>(match), priorityName(match.priority));
+    if (!match) return false;
+    auto segments = SubtitleEngine::parseSegments(SubtitleEngine::stripTags(match.raw));
     if (segments.empty()) return false;
-    const double baseDuration = SubtitleEngine::extractDuration(raw);
+    const auto now = g_playbackClock.state().now;
+    const auto displayNowMs = GetTickCount64();
+    if (m_runtime.active() &&
+        !shouldDisplaySubtitle(m_activeSubtitlePriority, match.priority)) {
+        Diagnostics::log("subtitle_suppressed id=0x%08lx priority=%s active_id=0x%08lx active_priority=%s",
+            static_cast<unsigned long>(id), priorityName(match.priority),
+            static_cast<unsigned long>(m_activeSubtitleId), priorityName(m_activeSubtitlePriority));
+        Diagnostics::captureSuppressed(displayNowMs, id, priorityName(match.priority),
+            m_activeSubtitleId, priorityName(m_activeSubtitlePriority));
+        return false;
+    }
+    const double baseDuration = SubtitleEngine::extractDuration(match.raw);
     const double duration = applySubtitleTailExtension(
         baseDuration, g_subtitleSettings.tailExtensionMs);
-    const auto now = g_playbackClock.state().now;
     if (m_runtime.active()) {
         const auto elapsed = std::chrono::duration<double>(now - m_activeSubtitleStart).count();
+        if (m_runtime.currentIndex() < m_activeSubtitleSegments.size())
+            Diagnostics::captureSegment("subtitle_segment_end", displayNowMs, m_activeSubtitleId,
+                m_runtime.currentIndex(), elapsed,
+                m_activeSubtitleSegments[m_runtime.currentIndex()].text);
+        Diagnostics::captureSubtitleEnd(m_activeSubtitleDisplayStartMs, displayNowMs,
+            m_activeSubtitleId, priorityName(m_activeSubtitlePriority), elapsed,
+            m_activeSubtitleBaseDuration, m_activeSubtitleDuration,
+            "replaced-by-audio", id);
         Diagnostics::log("subtitle_end id=0x%08lx reason=replaced-by-audio replacement_id=0x%08lx segment=%zu elapsed=%.3f configured_duration=%.3f",
             static_cast<unsigned long>(m_activeSubtitleId), static_cast<unsigned long>(id),
             m_runtime.currentIndex(), elapsed, m_activeSubtitleDuration);
@@ -263,8 +341,16 @@ bool ModRuntime::handleVoiceline(uint32_t id)
     m_runtime.start(segments, std::chrono::duration_cast<SubtitleRuntime::clock::duration>(
         std::chrono::duration<double>(duration)), now);
     m_activeSubtitleId = id;
+    m_activeSubtitlePriority = match.priority;
     m_activeSubtitleStart = now;
+    m_activeSubtitleDisplayStartMs = displayNowMs;
+    m_activeSubtitleBaseDuration = baseDuration > 0.0 ? baseDuration : 3.0;
     m_activeSubtitleDuration = duration;
+    m_activeSubtitleSegments = segments;
+    Diagnostics::captureSubtitleStart(event.timestampMs, displayNowMs, id,
+        priorityName(match.priority), m_activeSubtitleBaseDuration, duration, match.raw);
+    Diagnostics::captureSegment("subtitle_segment_start", displayNowMs, id, 0, 0.0,
+        segments.front().text);
     m_overlay.setSegments(segments);
     m_overlay.setVisible(true);
     return true;

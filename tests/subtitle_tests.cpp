@@ -38,10 +38,25 @@ int main() {
         check(!resolveAudio(0x10a80305, 0x2000, 1, readFixture).id, "unreadable manager");
         check(resolveAudio(0x20a802f9, 0, 0, nullptr).id == 0x20a802f9, "exact audio ID needs no conversion");
         const char* fixture = "lookup_fixture.json";
+        const char* secondaryFixture = "lookup_secondary_fixture.json";
         { std::ofstream f(fixture); f << R"({"0x10a80001":"exact<duration=2>","0x20a80001":"other<duration=2>","0x20a80002":"first<wait=1>second<duration=2>"})"; }
+        { std::ofstream f(secondaryFixture); f << R"({"0x20a80001":"duplicate secondary<duration=4>","0x20a80003":"ambient<duration=4>"})"; }
         SubtitleEngine engine;
         check(engine.load(fixture), "load fixture");
+        check(engine.loadSecondary(secondaryFixture), "load secondary fixture");
         check(engine.getRaw(0x10a80001) == "exact<duration=2>", "exact ID must win over transformed ID");
+        check(engine.getRaw(0x20a80001) == "other<duration=2>" &&
+              engine.getPriority(0x20a80001) == SubtitlePriority::Primary,
+              "primary database wins duplicate IDs");
+        check(engine.getRaw(0x20a80003) == "ambient<duration=4>" &&
+              engine.getPriority(0x20a80003) == SubtitlePriority::Secondary,
+              "secondary database supplies ambient subtitle");
+        check(!shouldDisplaySubtitle(SubtitlePriority::Primary, SubtitlePriority::Secondary),
+              "secondary subtitle cannot cover active mission subtitle");
+        check(shouldDisplaySubtitle(SubtitlePriority::Secondary, SubtitlePriority::Primary),
+              "mission subtitle replaces active secondary subtitle");
+        check(shouldDisplaySubtitle(SubtitlePriority::Secondary, SubtitlePriority::Secondary),
+              "new secondary speech replaces older secondary speech");
         check(engine.getRaw(0x30a80001).empty(), "unknown resource type must not alias voice");
         check(engine.getRaw(0).empty(), "unknown zero");
         SubtitleRuntime runtime;
@@ -100,6 +115,7 @@ int main() {
         check(PatternScan::FindOffsets(bytes, 1, "E8 01 03").empty(), "short buffer no unsigned underflow");
         check(PatternScan::FindOffsets(bytes, sizeof bytes, "").empty(), "empty pattern rejected");
         std::remove(fixture);
+        std::remove(secondaryFixture);
         std::cout << "PASS: lookup, timing, replay, queue concurrency/overflow, pattern matching\n";
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }
