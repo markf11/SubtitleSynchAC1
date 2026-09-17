@@ -19,7 +19,7 @@ struct SubtitleSettings
     int tailExtensionMs = 1500;
     float bottomMargin = 100.0f;
     float saveIndicatorLift = 90.0f;
-    int saveIndicatorDurationMs = 3000;
+    int saveIndicatorDurationMs = 3300;
 
     bool autoPosition = true;
 

@@ -57,7 +57,7 @@ bool SubtitleConfig::load()
         if (g_subtitleSettings.tailExtensionMs > 10000) g_subtitleSettings.tailExtensionMs = 10000;
         g_subtitleSettings.bottomMargin = ini.Get<float>("Subtitle", "BottomMargin", 100.0f);
         g_subtitleSettings.saveIndicatorLift = ini.Get<float>("Subtitle", "SaveIndicatorLift", 90.0f);
-        g_subtitleSettings.saveIndicatorDurationMs = ini.Get<int>("Subtitle", "SaveIndicatorDurationMs", 3000);
+        g_subtitleSettings.saveIndicatorDurationMs = ini.Get<int>("Subtitle", "SaveIndicatorDurationMs", 3300);
         if (g_subtitleSettings.saveIndicatorDurationMs < 0) g_subtitleSettings.saveIndicatorDurationMs = 0;
         if (g_subtitleSettings.saveIndicatorDurationMs > 10000) g_subtitleSettings.saveIndicatorDurationMs = 10000;
 

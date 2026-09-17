@@ -17,7 +17,7 @@ Open **F1** for a live preview and settings, then **Save to .ini** to persist:
 | Bottom margin at 1080p | `BottomMargin` | `100` |
 | Tail extension | `TailExtensionMs` | `1500` |
 | Lift during save activity | `SaveIndicatorLift` | `90` |
-| Save indicator duration | `SaveIndicatorDurationMs` | `3000` |
+| Save indicator duration | `SaveIndicatorDurationMs` | `3300` |
 
 Effective size = base size × font scale × game display height / reference height.
 When `AutoScale=0`, omit the last ratio. For the default settings, font sizes
