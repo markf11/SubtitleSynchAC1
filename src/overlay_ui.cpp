@@ -171,6 +171,12 @@ void SubtitleOverlay::drawDebugWindow() {
         ImGui::SliderFloat("Reference height", &g_subtitleSettings.referenceHeight, 480.0f, 4320.0f, "%.0f px");
     ImGui::Text("Effective font size: %.1f px", subtitleFontSize(g_subtitleSettings, screenSize));
     ImGui::SliderFloat("Maximum width", &g_subtitleSettings.maxWidthPercent, 20.0f, 100.0f, "%.0f%%");
+    ImGui::SliderInt("Resume delay after Escape", &g_subtitleSettings.resumeDelayMs, 0, 1500, "%d ms");
+    ImGui::SliderInt("Subtitle tail extension", &g_subtitleSettings.tailExtensionMs, 0, 5000, "%d ms");
+    ImGui::SliderFloat("Bottom margin", &g_subtitleSettings.bottomMargin, 0.0f, 400.0f, "%.0f px");
+    ImGui::SliderFloat("Lift while saving", &g_subtitleSettings.saveIndicatorLift, 0.0f, 400.0f, "%.0f px");
+    ImGui::SliderInt("Save indicator duration", &g_subtitleSettings.saveIndicatorDurationMs, 0, 10000, "%d ms");
+    ImGui::Text("Save activity: %s", m_saveIndicatorActive ? "detected" : "idle");
     ImGui::TextWrapped("Long subtitles wrap automatically. Base size is measured at the reference height when resolution scaling is enabled.");
 
     if (ImGui::Button("Reset to defaults"))
@@ -219,7 +225,8 @@ void SubtitleOverlay::render(HWND window)
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     if (display.x <= 0 || display.y <= 0) return;
     ImGui::PushFont(g_subtitleSettings.font, subtitleFontSize(g_subtitleSettings, display));
-    const auto layout = measureSubtitle(g_subtitleSettings, display, reshaped.c_str());
+    const float saveLift = m_saveIndicatorActive ? g_subtitleSettings.saveIndicatorLift : 0.0f;
+    const auto layout = measureSubtitle(g_subtitleSettings, display, reshaped.c_str(), saveLift);
 
     ImGui::PushStyleColor(ImGuiCol_WindowBg, g_subtitleSettings.backgroundColor);
     ImGui::PushStyleColor(ImGuiCol_Text, g_subtitleSettings.textColor);

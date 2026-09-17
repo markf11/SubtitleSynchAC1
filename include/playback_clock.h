@@ -70,3 +70,34 @@ private:
     bool m_escapeDown = false;
     bool m_resumeOnRelease = false;
 };
+
+// AC1 resumes dialogue after the menu-closing Escape release. Keep this delay
+// on wall time because the subtitle playback clock itself is frozen.
+class ResumeDelayGate {
+public:
+    using Clock = std::chrono::steady_clock;
+
+    bool request(std::chrono::milliseconds delay, Clock::time_point now = Clock::now()) {
+        if (delay.count() <= 0) {
+            m_pending = false;
+            return true;
+        }
+        m_deadline = now + delay;
+        m_pending = true;
+        return false;
+    }
+
+    bool update(Clock::time_point now = Clock::now()) {
+        if (!m_pending || now < m_deadline)
+            return false;
+        m_pending = false;
+        return true;
+    }
+
+    void cancel() { m_pending = false; }
+    bool pending() const { return m_pending; }
+
+private:
+    bool m_pending = false;
+    Clock::time_point m_deadline{};
+};

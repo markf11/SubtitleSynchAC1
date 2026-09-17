@@ -49,6 +49,17 @@ bool SubtitleConfig::load()
         g_subtitleSettings.autoScale = ini.Get<bool>("Subtitle", "AutoScale", true);
         g_subtitleSettings.referenceHeight = ini.Get<float>("Subtitle", "ReferenceHeight", 1080.0f);
         g_subtitleSettings.maxWidthPercent = ini.Get<float>("Subtitle", "MaxWidthPercent", 75.0f);
+        g_subtitleSettings.resumeDelayMs = ini.Get<int>("Subtitle", "ResumeDelayMs", 500);
+        if (g_subtitleSettings.resumeDelayMs < 0) g_subtitleSettings.resumeDelayMs = 0;
+        if (g_subtitleSettings.resumeDelayMs > 2000) g_subtitleSettings.resumeDelayMs = 2000;
+        g_subtitleSettings.tailExtensionMs = ini.Get<int>("Subtitle", "TailExtensionMs", 1500);
+        if (g_subtitleSettings.tailExtensionMs < 0) g_subtitleSettings.tailExtensionMs = 0;
+        if (g_subtitleSettings.tailExtensionMs > 10000) g_subtitleSettings.tailExtensionMs = 10000;
+        g_subtitleSettings.bottomMargin = ini.Get<float>("Subtitle", "BottomMargin", 100.0f);
+        g_subtitleSettings.saveIndicatorLift = ini.Get<float>("Subtitle", "SaveIndicatorLift", 90.0f);
+        g_subtitleSettings.saveIndicatorDurationMs = ini.Get<int>("Subtitle", "SaveIndicatorDurationMs", 3000);
+        if (g_subtitleSettings.saveIndicatorDurationMs < 0) g_subtitleSettings.saveIndicatorDurationMs = 0;
+        if (g_subtitleSettings.saveIndicatorDurationMs > 10000) g_subtitleSettings.saveIndicatorDurationMs = 10000;
 
         g_subtitleSettings.textColor.x = ini.Get<float>("Subtitle", "SubtitleColorR", 1.0f);
         g_subtitleSettings.textColor.y = ini.Get<float>("Subtitle", "SubtitleColorG", 1.0f);
@@ -88,6 +99,11 @@ bool SubtitleConfig::save() const
         ini.InsertEntry("Subtitle", "AutoScale", g_subtitleSettings.autoScale);
         ini.InsertEntry("Subtitle", "ReferenceHeight", g_subtitleSettings.referenceHeight);
         ini.InsertEntry("Subtitle", "MaxWidthPercent", g_subtitleSettings.maxWidthPercent);
+        ini.InsertEntry("Subtitle", "ResumeDelayMs", g_subtitleSettings.resumeDelayMs);
+        ini.InsertEntry("Subtitle", "TailExtensionMs", g_subtitleSettings.tailExtensionMs);
+        ini.InsertEntry("Subtitle", "BottomMargin", g_subtitleSettings.bottomMargin);
+        ini.InsertEntry("Subtitle", "SaveIndicatorLift", g_subtitleSettings.saveIndicatorLift);
+        ini.InsertEntry("Subtitle", "SaveIndicatorDurationMs", g_subtitleSettings.saveIndicatorDurationMs);
 
         ini.InsertEntry("Subtitle", "SubtitleColorR", g_subtitleSettings.textColor.x);
         ini.InsertEntry("Subtitle", "SubtitleColorG", g_subtitleSettings.textColor.y);

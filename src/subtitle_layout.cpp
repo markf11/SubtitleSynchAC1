@@ -17,7 +17,9 @@ float subtitleFontSize(const SubtitleSettings& s, ImVec2 display) {
     return std::clamp(base * factor * resolution, 8.0f, 512.0f);
 }
 
-SubtitleLayout measureSubtitle(const SubtitleSettings& s, ImVec2 display, const char* text) {
+SubtitleLayout measureSubtitle(
+    const SubtitleSettings& s, ImVec2 display, const char* text,
+    float extraBottomMargin) {
     const float width = bounded(display.x, 1, 1, 32768);
     const float height = bounded(display.y, 1, 1, 16384);
     const float maxWidth = width * bounded(s.maxWidthPercent, 75, 20, 100) / 100;
@@ -53,12 +55,15 @@ SubtitleLayout measureSubtitle(const SubtitleSettings& s, ImVec2 display, const 
     } while (cursor <= end);
     const ImVec2 textSize(longest, lines.size() * ImGui::GetFontSize());
     ImVec2 size(std::min(maxWidth, textSize.x + 2 * padding.x), textSize.y + 2 * padding.y);
+    const float reference = bounded(s.referenceHeight, 1080, 480, 4320);
+    const float baseMargin = bounded(s.bottomMargin, 100, 0, 1000) * height / reference;
+    const float transientLift = bounded(extraBottomMargin, 0, 0, 2000) * height / reference;
     ImVec2 pos;
     if (s.autoPosition) {
-        pos = ImVec2((width - size.x) / 2, height - 100 * height / 1080 - size.y);
+        pos = ImVec2((width - size.x) / 2, height - baseMargin - transientLift - size.y);
     } else {
         pos = ImVec2(bounded(s.position.x, width / 2, 0, width) - size.x / 2,
-                     bounded(s.position.y, height / 2, 0, height) - size.y / 2);
+                     bounded(s.position.y, height / 2, 0, height) - size.y / 2 - transientLift);
     }
     pos.x = std::clamp(pos.x, 0.0f, std::max(0.0f, width - size.x));
     pos.y = std::clamp(pos.y, 0.0f, std::max(0.0f, height - size.y));

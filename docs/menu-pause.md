@@ -3,9 +3,10 @@
 The overlay uses a shared monotonic playback clock. When the game enters the
 observed pause state, the clock stops; resuming subtracts all paused wall time.
 Subtitle segment and total-duration deadlines stay on that clock. Repeated
-pause notifications are idempotent. Audio callbacks are discarded while paused,
-and both transition boundaries clear already queued callbacks. They therefore
-cannot replace the frozen subtitle when gameplay resumes.
+pause notifications are idempotent. Mapped dialogue callbacks arriving during
+the pause are buffered, near duplicates are filtered, and valid new dialogue is
+replayed after resume. This prevents a line beginning near the pause boundary
+from disappearing.
 
 While paused, the subtitle is deliberately hidden so it does not cover the game
 menu. Its active segment and remaining logical time stay intact. The first frame
@@ -18,21 +19,19 @@ resume event. They are no longer installed. The render hook now observes the
 rising edge of Escape while the game window has focus. The first press freezes
 and hides the subtitle; holding the key cannot repeat the transition. The next
 press marks the menu as closing, but the subtitle stays frozen and hidden until
-that Escape is released. This keeps the subtitle clock aligned with gameplay
-audio after the menu transition.
+that Escape is released and the configured `ResumeDelayMs` elapses. This keeps
+the subtitle clock aligned with gameplay audio after the menu transition.
 
-Diagnostics report `build=audio-sync-v5.4-release-resume`,
-`pause_tracking source=escape-edge`, and
+Diagnostics report `build=audio-sync-v5.9-tail-save-lift`,
+`pause_tracking source=escape-edge+configured-resume-delay`, and
 `playback_pause paused=1 source=escape-press` followed by
-`paused=0 source=escape-release`. Unit tests cover deferred Escape release,
+`paused=0 source=configured-resume-delay`. Unit tests cover deferred Escape release,
 long/repeated pauses, retained
 segment time and final expiry. A native x86 test executes both production
 observers and verifies the original state writes and CMP flags. Six CTest
-checks pass. The v5 log proved both game transitions fired, but also revealed
-that queued callbacks replaced the frozen subtitle after resume. v5.1 fixes
-that path. The v5.4 input path also prevents the subtitle from running during
-the menu-closing keypress; its actual-game behavior still needs acceptance
-testing.
+checks pass. The current input path prevents the subtitle from running during
+the menu-closing keypress and preserves a new mapped dialogue event received
+while the playback clock is frozen.
 
 For a manual check, open the pause menu during a long subtitle, wait longer than
 its normal duration, then resume. The same segment should resume with only its

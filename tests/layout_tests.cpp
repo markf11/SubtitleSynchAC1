@@ -35,6 +35,10 @@ int main() {
             ImGui::NewFrame();
             ImGui::PushFont(font, subtitleFontSize(s, display));
             const auto layout = measureSubtitle(s, display, longText.c_str());
+            const auto shortLayout = measureSubtitle(s, display, "short", 0.0f);
+            const auto lifted = measureSubtitle(s, display, "short", 90.0f);
+            check(std::abs((shortLayout.position.y - lifted.position.y) - 90.0f * display.y / 1080.0f) < .01f,
+                  "save activity adds a resolution-scaled vertical lift");
             check(layout.lines.size() > 1, "wrapped lines exposed for centered drawing");
             for (const auto& line : layout.lines)
                 check(std::abs(line.offset.x + line.width / 2 - layout.size.x / 2) < .01f,

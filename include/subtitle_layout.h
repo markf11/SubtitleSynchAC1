@@ -17,4 +17,6 @@ struct SubtitleLayout {
 
 float subtitleFontSize(const SubtitleSettings& settings, ImVec2 display);
 // Call with the same ImGui font/size active as will be used for drawing.
-SubtitleLayout measureSubtitle(const SubtitleSettings& settings, ImVec2 display, const char* text);
+SubtitleLayout measureSubtitle(
+    const SubtitleSettings& settings, ImVec2 display, const char* text,
+    float extraBottomMargin = 0.0f);

@@ -3,6 +3,7 @@
 #include "audio_system.h"
 #include "pattern_scan.h"
 #include <fstream>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -46,11 +47,20 @@ int main() {
         SubtitleRuntime runtime;
         using C = SubtitleRuntime::clock;
         const auto t = C::time_point{};
+        check(std::abs(applySubtitleTailExtension(2.0, 1500) - 3.5) < 0.0001,
+              "configured tail extends the database duration");
+        check(std::abs(applySubtitleTailExtension(2.0, -500) - 2.0) < 0.0001,
+              "invalid negative tail cannot shorten a subtitle");
         const auto segments = engine.getSegments(0x20a80002);
         runtime.start(segments, std::chrono::seconds(2), t);
-        runtime.update(t + std::chrono::milliseconds(1100));
+        auto runtimeEvent = runtime.update(t + std::chrono::milliseconds(1100));
+        check(runtimeEvent.kind == SubtitleUpdateKind::SegmentChanged &&
+              runtimeEvent.previousIndex == 0 && runtimeEvent.currentIndex == 1,
+              "segment transition reports its indices");
         check(runtime.currentText() == "second", "advance segment");
-        runtime.update(t + std::chrono::seconds(2));
+        runtimeEvent = runtime.update(t + std::chrono::seconds(2));
+        check(runtimeEvent.kind == SubtitleUpdateKind::DurationExpired,
+              "duration expiry reports why the subtitle ended");
         check(!runtime.active(), "total duration caps last segment");
         runtime.start(segments, std::chrono::seconds(2), t);
         runtime.update(t + std::chrono::seconds(20));
@@ -59,6 +69,11 @@ int main() {
         runtime.start(segments, std::chrono::seconds(2), t + std::chrono::seconds(1));
         runtime.update(t + std::chrono::milliseconds(1500));
         check(runtime.currentText() == "first", "repeated playback restarts");
+        runtime.start(segments, std::chrono::milliseconds(3500), t);
+        runtime.update(t + std::chrono::milliseconds(3400));
+        check(runtime.active(), "tail extension keeps the final subtitle visible");
+        runtime.start(segments, std::chrono::milliseconds(3500), t + std::chrono::milliseconds(3400));
+        check(runtime.currentText() == "first", "a new subtitle still replaces an extended one immediately");
         AudioQueue queue;
         check(queue.push({0, 1, 1}) && queue.push({42, 2, 2}) && queue.push({42, 2, 3}), "enqueue repeated and zero IDs");
         AudioEvent event;

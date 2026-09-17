@@ -45,7 +45,8 @@ int main() {
     if (MH_Initialize() != MH_OK || !AudioHook::Install(site)) return 2;
     AudioEvent event;
     g_playbackClock.setPaused(true);
-    if (run() != 0x12345678 || calls != 2 || g_AudioQueue.pop(event)) return 3;
+    if (run() != 0x12345678 || calls != 2 || !g_AudioQueue.pop(event) ||
+        event.id != 0x20a802f9 || event.rawId != 0x10a80305) return 3;
     g_playbackClock.setPaused(false);
     if (run() != 0x12345678 || run() != 0x12345678 || calls != 4) return 4;
     for (int i=0; i<2; ++i)
@@ -55,5 +56,5 @@ int main() {
     MH_DisableHook(reinterpret_cast<void*>(site));
     MH_Uninitialize();
     if (run() != 0x12345678 || calls != 5) return 7;
-    std::cout << "PASS: native x86 detour preserves CALL/result/ESI, drops paused callbacks and repeats events\n";
+    std::cout << "PASS: native x86 detour preserves CALL/result/ESI, captures pause-boundary dialogue and repeats events\n";
 }

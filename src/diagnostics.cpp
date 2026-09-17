@@ -18,7 +18,7 @@ void init(const std::string& directory) {
     auto base = reinterpret_cast<const unsigned char*>(GetModuleHandleA(nullptr));
     auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
     auto nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-    log("session exe=%s pe_timestamp=%08lx image_size=%08lx build=audio-sync-v5.4-release-resume", exe,
+    log("session exe=%s pe_timestamp=%08lx image_size=%08lx build=audio-sync-v5.9-tail-save-lift", exe,
         nt->FileHeader.TimeDateStamp, nt->OptionalHeader.SizeOfImage);
 }
 bool enabled() { return logFile != nullptr; }

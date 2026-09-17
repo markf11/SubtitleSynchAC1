@@ -15,6 +15,11 @@ struct SubtitleSettings
     bool autoScale = true;
     float referenceHeight = 1080.0f;
     float maxWidthPercent = 75.0f;
+    int resumeDelayMs = 500;
+    int tailExtensionMs = 1500;
+    float bottomMargin = 100.0f;
+    float saveIndicatorLift = 90.0f;
+    int saveIndicatorDurationMs = 3000;
 
     bool autoPosition = true;
 

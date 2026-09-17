@@ -17,9 +17,9 @@ bool ReadGameAudio(uintptr_t address, void* output, size_t size) {
         output, size, &copied) && copied == size;
 }
 void __cdecl PushAudioEvent(uint32_t rawId, uintptr_t manager, uint32_t handle) noexcept {
-    // Menu/UI audio callbacks continue while the game is paused. They must not
-    // be replayed as dialogue when gameplay resumes.
-    if (g_playbackClock.paused()) return;
+    // Capture events during pause as well. The render thread can safely check
+    // them against the loaded subtitle database, retain actual dialogue, and
+    // discard menu/UI sounds without losing a line that starts at the boundary.
     const auto audio = resolveAudio(rawId, manager, handle, &ReadGameAudio);
     g_AudioQueue.push({audio.id, GetCurrentThreadId(), GetTickCount64(), rawId, audio.resolution});
 }

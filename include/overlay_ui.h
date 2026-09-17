@@ -25,6 +25,7 @@ public:
     bool isDebugWindowVisible() const { return m_debugWindow; }
     std::string currentText() const { return m_currentText; }
     std::string debugText() const { return m_debugInput; }
+    void setSaveIndicatorActive(bool active) { m_saveIndicatorActive = active; }
 
 private:
     void advanceSegment();
@@ -41,6 +42,7 @@ private:
     bool m_visible = false;
     bool m_debugVisible = false;
     bool m_debugWindow = false;
+    bool m_saveIndicatorActive = false;
     
     std::string m_currentText;
     std::string m_debugInput;
