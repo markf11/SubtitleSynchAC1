@@ -37,7 +37,7 @@ void init(const std::string& directory) {
         if (captureFile) {
             std::setvbuf(captureFile, nullptr, _IOFBF, 64 * 1024);
             std::fprintf(captureFile,
-                "session\t%llu\t0\tbuild=audio-sync-v5.11-capture-priority\n"
+                "session\t%llu\t0\tbuild=audio-sync-v5.12-f2-marker\n"
                 "#type\ttick_ms\tsession_ms\tfields\n",
                 static_cast<unsigned long long>(captureSessionStart));
             std::fflush(captureFile);
@@ -53,7 +53,7 @@ void init(const std::string& directory) {
     auto base = reinterpret_cast<const unsigned char*>(GetModuleHandleA(nullptr));
     auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
     auto nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-    log("session exe=%s pe_timestamp=%08lx image_size=%08lx build=audio-sync-v5.11-capture-priority", exe,
+    log("session exe=%s pe_timestamp=%08lx image_size=%08lx build=audio-sync-v5.12-f2-marker", exe,
         nt->FileHeader.TimeDateStamp, nt->OptionalHeader.SizeOfImage);
 }
 bool enabled() { return logFile != nullptr; }
@@ -146,14 +146,15 @@ void captureSuppressed(uint64_t atMs, uint32_t id, const char* priority,
     std::fflush(captureFile);
 }
 
-void captureMarker(uint64_t atMs, uint32_t activeId, const char* activePriority,
+void captureMarker(uint64_t atMs, uint32_t sequence, uint32_t activeId, const char* activePriority,
                    double playbackElapsed, const std::string& text) {
     if (!captureFile) return;
     std::lock_guard<std::mutex> lock(logMutex);
     capturePrefix("review_marker_f2", atMs);
     const auto clean = oneLine(text);
-    std::fprintf(captureFile, "active_id=0x%08lx\tactive_priority=%s\tplayback_elapsed_ms=%.0f\ttext=%s\n",
-        static_cast<unsigned long>(activeId), activePriority, playbackElapsed * 1000.0, clean.c_str());
+    std::fprintf(captureFile, "marker=%lu\tactive_id=0x%08lx\tactive_priority=%s\tplayback_elapsed_ms=%.0f\ttext=%s\n",
+        static_cast<unsigned long>(sequence), static_cast<unsigned long>(activeId),
+        activePriority, playbackElapsed * 1000.0, clean.c_str());
     std::fflush(captureFile);
 }
 

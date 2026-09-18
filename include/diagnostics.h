@@ -21,7 +21,7 @@ void captureSegment(const char* action, uint64_t atMs, uint32_t id, size_t index
                     double playbackElapsed, const std::string& text);
 void captureSuppressed(uint64_t atMs, uint32_t id, const char* priority,
                        uint32_t activeId, const char* activePriority);
-void captureMarker(uint64_t atMs, uint32_t activeId, const char* activePriority,
+void captureMarker(uint64_t atMs, uint32_t sequence, uint32_t activeId, const char* activePriority,
                    double playbackElapsed, const std::string& text);
 void captureDisplay(uint64_t atMs, bool visible, uint32_t activeId, bool paused,
                     const std::string& text);

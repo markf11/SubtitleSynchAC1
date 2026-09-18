@@ -54,5 +54,6 @@ public:
     bool m_lastDiagnosticDebugWindow = false;
     bool m_lastDiagnosticDebugPreview = false;
     bool m_lastDiagnosticSaveActivity = false;
+    uint32_t m_captureMarkerSequence = 0;
     std::deque<AudioEvent> m_pausedDialogueEvents;
 };

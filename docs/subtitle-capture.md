@@ -23,13 +23,21 @@ Restart the game, replay the scene, then exit normally. The mod writes
   current line around the pause menu;
 - `subtitle_suppressed`: a secondary subtitle that was correctly hidden while
   a primary subtitle was active;
-- `review_marker_f2`: a manual reference point made by pressing F2.
+- `review_marker_f2`: a numbered manual reference point made by pressing F2.
 
 Press F2 at the audible end of a known spoken line. Its marker contains the
 active subtitle ID and the pause-excluded elapsed time, which can be compared
 with `db_duration_ms`. For a missing line, press F2 while it is spoken or at
 its end; nearby `audio_dispatch` rows provide the candidate resource IDs.
-F2 only writes a marker and does not hide or otherwise change the subtitle.
+F2 shows a small `F2 MARK #001` confirmation at the top of the screen for 1.2
+seconds. The same marker number is written to the capture file so a gameplay
+recording can be matched to the log. It does not hide or otherwise change the
+subtitle.
+
+Capture starts automatically on every game launch while `Enabled=1`. New
+sessions are appended to the same file and identified by their own `session`
+row. Based on measured event density, expect roughly 3-5 MB per gameplay hour,
+or about 45-125 MB for a 15-25 hour run.
 
 The runtime event contains an audio resource ID and timing metadata, not a
 transcript. The spoken text must therefore be transcribed from the audio (by a

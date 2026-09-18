@@ -1,5 +1,7 @@
 #include <imgui.h>
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include "overlay_ui.h"
@@ -135,6 +137,53 @@ void SubtitleOverlay::advanceSegment()
     }
 }
 
+void SubtitleOverlay::showCaptureMarker(uint32_t sequence)
+{
+    m_captureMarkerSequence = sequence;
+    m_captureMarkerUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(1200);
+}
+
+void SubtitleOverlay::drawCaptureMarker()
+{
+    const auto now = std::chrono::steady_clock::now();
+    if (!m_captureMarkerSequence || now >= m_captureMarkerUntil)
+        return;
+
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    if (display.x <= 0.0f || display.y <= 0.0f)
+        return;
+
+    const float remaining = std::chrono::duration<float>(m_captureMarkerUntil - now).count();
+    const float fade = std::clamp(remaining / 0.30f, 0.0f, 1.0f);
+    const float markerFontSize = std::clamp(18.0f * display.y / 1080.0f, 14.0f, 24.0f);
+    char label[32]{};
+    std::snprintf(label, sizeof(label), "F2 MARK #%03lu",
+        static_cast<unsigned long>(m_captureMarkerSequence));
+
+    ImGui::PushFont(g_subtitleSettings.font, markerFontSize);
+    const ImVec2 textSize = ImGui::CalcTextSize(label);
+    const ImVec2 padding(10.0f, 5.0f);
+    ImGui::SetNextWindowPos(
+        ImVec2((display.x - textSize.x - padding.x * 2.0f) * 0.5f, 16.0f),
+        ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.58f * fade);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, padding);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 5.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.95f, 0.45f, 0.85f * fade));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 1.0f, 0.68f, fade));
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoInputs |
+        ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus;
+    if (ImGui::Begin("CaptureMarkerIndicator", nullptr, flags))
+        ImGui::TextUnformatted(label);
+    ImGui::End();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(3);
+    ImGui::PopFont();
+}
+
 
 void SubtitleOverlay::drawDebugWindow() {
     ImGui::SetNextWindowSize(ImVec2(450, 430), ImGuiCond_FirstUseEver);
@@ -184,6 +233,8 @@ void SubtitleOverlay::render(HWND window)
 
     if (m_debugWindow)
         drawDebugWindow();
+
+    drawCaptureMarker();
 
     if (!m_visible || m_currentText.empty())
         return;

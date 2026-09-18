@@ -77,13 +77,16 @@ void ModRuntime::update(void) {
         }
         pauseAction = m_escapePause.update(escapeDown, g_playbackClock.paused());
         if (Diagnostics::captureEnabled() && (GetAsyncKeyState(VK_F2) & 1)) {
+            ++m_captureMarkerSequence;
             double elapsed = 0.0;
             if (m_runtime.active())
                 elapsed = std::chrono::duration<double>(
                     g_playbackClock.state().now - m_activeSubtitleStart).count();
-            Diagnostics::captureMarker(GetTickCount64(), m_activeSubtitleId,
+            Diagnostics::captureMarker(GetTickCount64(), m_captureMarkerSequence, m_activeSubtitleId,
                 priorityName(m_activeSubtitlePriority), elapsed, m_runtime.currentText());
-            Diagnostics::log("capture_marker key=F2 active_id=0x%08lx elapsed=%.3f",
+            m_overlay.showCaptureMarker(m_captureMarkerSequence);
+            Diagnostics::log("capture_marker key=F2 marker=%lu active_id=0x%08lx elapsed=%.3f",
+                static_cast<unsigned long>(m_captureMarkerSequence),
                 static_cast<unsigned long>(m_activeSubtitleId), elapsed);
         }
     }
