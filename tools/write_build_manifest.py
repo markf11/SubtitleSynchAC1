@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import platform
+import re
 import shutil
 import struct
 import subprocess
@@ -47,18 +48,26 @@ def main():
         path = ROOT / name
         if path.is_file() and (name.startswith(('src/', 'include/', 'cmake/')) or name == 'CMakeLists.txt'):
             hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    caches = list(binary.parent.glob('CMakeCache.txt')) + list(binary.parent.parent.glob('CMakeCache.txt'))
+    build_directory = next((path for path in (binary.parent, binary.parent.parent) if (path / 'CMakeCache.txt').exists()), None)
+    compiler_metadata = {}
     compiler = []
-    for cache in caches[:1]:
-        for line in cache.read_text(encoding='utf-8').splitlines():
-            if line.startswith('CMAKE_CXX_COMPILER:FILEPATH='):
-                executable = line.split('=', 1)[1]
-                compiler = version([executable, '/Bv' if 'cl.exe' == Path(executable).name.lower() else '--version'])
+    if build_directory:
+        configurations = list((build_directory / 'CMakeFiles').glob('*/CMakeCXXCompiler.cmake'))
+        if configurations:
+            configuration = configurations[0].read_text(encoding='utf-8')
+            for key in ('CMAKE_CXX_COMPILER', 'CMAKE_CXX_COMPILER_ID', 'CMAKE_CXX_COMPILER_VERSION'):
+                match = re.search(r'set\(' + key + r' "([^\"]+)"\)', configuration)
+                if match:
+                    compiler_metadata[key] = match[1] if key != 'CMAKE_CXX_COMPILER' else Path(match[1]).name
+                    if key == 'CMAKE_CXX_COMPILER':
+                        executable = match[1]
+                        compiler = version([executable, '/Bv' if 'cl.exe' == Path(executable).name.lower() else '--version'])
     manifest = {'source_commit': commit, 'binary': 'SubtitleSynchAC1.asi',
                 'binary_sha256': hashlib.sha256(data).hexdigest(), 'architecture': 'x86',
                 'source_file_sha256': hashes, 'submodule_commits': submodules,
                 'platform': platform.platform(), 'python': platform.python_version(),
-                'cmake': version(['cmake', '--version']), 'compiler_version_output': compiler,
+                'cmake': version(['cmake', '--version']), 'compiler': compiler_metadata,
+                'compiler_version_output': compiler,
                 'claim': 'Build provenance and byte identification, not a security certification or bit-for-bit reproducibility claim.'}
     output = args.output.resolve()
     if output == binary.parent or output == ROOT or binary == output / 'SubtitleSynchAC1.asi':

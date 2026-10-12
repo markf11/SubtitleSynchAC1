@@ -28,6 +28,8 @@ The ASI is `build/msvc-x86/Release/SubtitleSynchAC1.asi`. Native tests execute
 the real observation stubs in a synthetic x86 process, not a live game.
 The MSVC build reads source text as UTF-8 so interaction-label literals do not
 depend on the compiler machine's system code page.
+The MSVC runtime is linked statically so this ASI does not require separately
+shipping the MSVC C++ runtime DLLs.
 
 ## LLVM-MinGW / Ninja
 
