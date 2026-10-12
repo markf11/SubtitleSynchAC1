@@ -1,3 +1,21 @@
 /build
 /build-vs2022-x86
 /build-mingw32
+__pycache__/
+/tools/node_modules/
+/outputs/
+
+# Local game archives, recordings and translation work are not source releases.
+/AnvilToolkit/
+/release/
+/localization/*
+!/localization/garnier-confession-reference.json
+*.asi
+*.exe
+*.dll
+*.zip
+*.forge
+*.bak
+*.capture.tsv
+*.log
+!/tests/fixtures/*.log

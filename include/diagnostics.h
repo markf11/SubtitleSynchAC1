@@ -3,9 +3,14 @@
 #include <cstdint>
 #include <string>
 namespace Diagnostics {
+enum class RecordingTarget { General, GarnierConfession };
 void init(const std::string& directory);
 bool enabled();
 bool captureEnabled();
+bool recording();
+bool setRecording(bool active, RecordingTarget target = RecordingTarget::General);
+RecordingTarget recordingTarget();
+uint64_t recordingSession();
 void log(const char* format, ...);
 void error(const char* message);
 void captureAudio(uint64_t eventMs, uint32_t id, uint32_t rawId, uint32_t threadId,
@@ -25,4 +30,7 @@ void captureMarker(uint64_t atMs, uint32_t sequence, uint32_t activeId, const ch
                    double playbackElapsed, const std::string& text);
 void captureDisplay(uint64_t atMs, bool visible, uint32_t activeId, bool paused,
                     const std::string& text);
+void captureDecision(uint64_t atMs, uint32_t id, uint32_t rawId,
+                     const char* reason, uint32_t activeId);
+void captureQueueDrops(uint64_t atMs, uint32_t count);
 }

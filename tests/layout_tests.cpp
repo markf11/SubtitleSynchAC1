@@ -45,7 +45,7 @@ int main() {
                       "every wrapped line shares the block center");
             const auto measured = ImGui::CalcTextSize(longText.c_str(), nullptr, false, layout.wrapWidth);
             check(measured.y > ImGui::GetFontSize(), "long text wraps");
-            check(layout.size.x <= display.x * .75f + 1, "horizontal screen budget");
+            check(layout.size.x <= display.x * .65f + 1, "horizontal screen budget");
             check(layout.position.x >= 0 && layout.position.y >= 0, "nonnegative position");
             check(layout.position.y + layout.size.y <= display.y + 1, "wrapped block stays above bottom");
             const float lines = measured.y / ImGui::GetFontSize();
@@ -56,13 +56,17 @@ int main() {
             const auto unequal = measureSubtitle(s, display, "longer\nx");
             check(unequal.lines.size() == 2 && unequal.lines[1].offset.x > unequal.lines[0].offset.x,
                   "short explicit line is centered rather than left aligned");
+            check(unequal.lines[1].backgroundSize.x < unequal.lines[0].backgroundSize.x &&
+                  std::abs(unequal.lines[0].backgroundOffset.x + unequal.lines[0].backgroundSize.x / 2 -
+                           unequal.lines[1].backgroundOffset.x - unequal.lines[1].backgroundSize.x / 2) < .01f,
+                  "each line has its own centered background width");
             const auto blanks = measureSubtitle(s, display, "one\n\ntwo\n");
             check(blanks.lines.size() == 4 && blanks.lines[1].text.empty() && blanks.lines[3].text.empty(),
                   "explicit blank lines and trailing newline preserved");
             check(explicitBreak.size.y >= 2 * ImGui::GetFontSize(), "manual line break preserved");
             const std::string unbroken(300, 'W');
             const auto word = measureSubtitle(s, display, unbroken.c_str());
-            check(word.size.y > ImGui::GetFontSize() && word.size.x <= display.x * .75f + 1,
+            check(word.size.y > ImGui::GetFontSize() && word.size.x <= display.x * .65f + 1,
                   "unbroken token wraps within width budget");
             s.autoPosition = false; s.position = {-100,100000}; s.padding.y = -25;
             const auto manual = measureSubtitle(s, display, "short");

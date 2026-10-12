@@ -22,7 +22,7 @@ SubtitleLayout measureSubtitle(
     float extraBottomMargin) {
     const float width = bounded(display.x, 1, 1, 32768);
     const float height = bounded(display.y, 1, 1, 16384);
-    const float maxWidth = width * bounded(s.maxWidthPercent, 75, 20, 100) / 100;
+    const float maxWidth = width * bounded(s.maxWidthPercent, 65, 20, 100) / 100;
     const float ratio = s.autoScale ? height / bounded(s.referenceHeight, 1080, 480, 4320) : 1;
     // Old configs used negative vertical padding; never let that clip glyphs.
     ImVec2 padding(bounded(s.padding.x, 8, 0, 100) * ratio,
@@ -67,7 +67,15 @@ SubtitleLayout measureSubtitle(
     }
     pos.x = std::clamp(pos.x, 0.0f, std::max(0.0f, width - size.x));
     pos.y = std::clamp(pos.y, 0.0f, std::max(0.0f, height - size.y));
-    for (size_t i = 0; i < lines.size(); ++i)
-        lines[i].offset = ImVec2((size.x - lines[i].width) / 2, padding.y + i * ImGui::GetFontSize());
+    for (size_t i = 0; i < lines.size(); ++i) {
+        auto& line = lines[i];
+        line.offset = ImVec2((size.x - line.width) / 2, padding.y + i * ImGui::GetFontSize());
+        const float top = i == 0 ? 0.0f : padding.y + i * ImGui::GetFontSize();
+        const float bottom = i + 1 == lines.size()
+            ? size.y : padding.y + (i + 1) * ImGui::GetFontSize();
+        line.backgroundOffset = ImVec2(line.offset.x - padding.x, top);
+        line.backgroundSize = ImVec2(line.width + 2 * padding.x,
+                                     bottom - top);
+    }
     return {pos, size, padding, wrap, std::move(lines)};
 }

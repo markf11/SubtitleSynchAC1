@@ -10,6 +10,8 @@
 #include "subtitle_settings.h"
 #include "subtitle_layout.h"
 #include "globals.h"
+#include "diagnostics.h"
+#include "hooks/press_prompt_hook.h"
 
 SubtitleSettings g_subtitleSettings;
 
@@ -204,9 +206,27 @@ void SubtitleOverlay::drawDebugWindow() {
     ImGui::SliderFloat("Subtitle scale", &g_subtitleSettings.scale, 0.5f, 3.0f);
     ImGui::Text("Effective font size: %.1f px", subtitleFontSize(g_subtitleSettings, screenSize));
     ImGui::Text("Save activity: %s", m_saveIndicatorActive ? "detected" : "idle");
-    ImGui::TextWrapped("Resolution scaling, wrapping, centering and save-indicator positioning are automatic. Advanced settings remain available in SubtitleSynchAC1.ini.");
+    ImGui::Text("Interaction prompt: %s", !PressPromptHook::address() ? "observer unavailable" :
+        m_pressPromptActive ? "detected" : "idle");
+    ImGui::TextWrapped("Resolution scaling, wrapping, centering and prompt positioning are automatic. Advanced settings remain available in SubtitleSynchAC1.ini.");
 
     ImGui::Separator();
+
+    bool recording = Diagnostics::recording() &&
+        Diagnostics::recordingTarget() == Diagnostics::RecordingTarget::General;
+    static bool recordingFailed = false;
+    if (ImGui::Checkbox("Record diagnostics and F2 markers", &recording))
+        recordingFailed = !Diagnostics::setRecording(recording);
+    bool garnierRecording = Diagnostics::recording() &&
+        Diagnostics::recordingTarget() == Diagnostics::RecordingTarget::GarnierConfession;
+    if (ImGui::Checkbox("Record Garnier confession", &garnierRecording))
+        recordingFailed = !Diagnostics::setRecording(garnierRecording,
+            Diagnostics::RecordingTarget::GarnierConfession);
+    if (garnierRecording)
+        ImGui::TextWrapped("Garnier recording active. F2 marks a problem. Stop after the confession to save the two .garnier logs.");
+    if (recordingFailed)
+        ImGui::TextWrapped("Cannot open recording files in the mod folder.");
+    ImGui::TextWrapped("Recording is off at launch by default. Enable it before testing; F2 marks a moment for review. Disabling flushes and closes both logs.");
 
     ImGui::InputTextMultiline(
         "##debug_output",
@@ -237,7 +257,10 @@ void SubtitleOverlay::render(HWND window)
     drawCaptureMarker();
 
     if (!m_visible || m_currentText.empty())
+    {
+        m_layoutLogged = false;
         return;
+    }
 
     std::wstring reshapedW = ShapingEngine::wrender(ShapingEngine::Helper::widen(m_currentText));
     std::string reshaped = ShapingEngine::Helper::narrow(reshapedW);
@@ -247,10 +270,24 @@ void SubtitleOverlay::render(HWND window)
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     if (display.x <= 0 || display.y <= 0) return;
     ImGui::PushFont(g_subtitleSettings.font, subtitleFontSize(g_subtitleSettings, display));
-    const float saveLift = m_saveIndicatorActive ? g_subtitleSettings.saveIndicatorLift : 0.0f;
+    const float saveLift = (m_saveIndicatorActive || m_pressPromptActive)
+        ? g_subtitleSettings.saveIndicatorLift : 0.0f;
     const auto layout = measureSubtitle(g_subtitleSettings, display, reshaped.c_str(), saveLift);
+    const unsigned liftSources = (m_saveIndicatorActive ? 1u : 0u) | (m_pressPromptActive ? 2u : 0u);
+    if (Diagnostics::enabled()) {
+        if (!m_layoutLogged || layout.position.x != m_lastLayoutX || layout.position.y != m_lastLayoutY ||
+            layout.size.x != m_lastLayoutWidth || layout.size.y != m_lastLayoutHeight ||
+            liftSources != m_lastLayoutLiftSources) {
+            Diagnostics::log("subtitle_layout x=%.1f y=%.1f width=%.1f height=%.1f lines=%zu lift=%.1f save=%u interaction=%u screen=%.0fx%.0f",
+                layout.position.x, layout.position.y, layout.size.x, layout.size.y, layout.lines.size(),
+                saveLift, m_saveIndicatorActive, m_pressPromptActive, display.x, display.y);
+            m_lastLayoutX = layout.position.x; m_lastLayoutY = layout.position.y;
+            m_lastLayoutWidth = layout.size.x; m_lastLayoutHeight = layout.size.y;
+            m_lastLayoutLiftSources = liftSources;
+            m_layoutLogged = true;
+        }
+    } else m_layoutLogged = false;
 
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, g_subtitleSettings.backgroundColor);
     ImGui::PushStyleColor(ImGuiCol_Text, g_subtitleSettings.textColor);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -262,19 +299,26 @@ void SubtitleOverlay::render(HWND window)
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoFocusOnAppearing |
-        ImGuiWindowFlags_NoBringToFrontOnFocus;
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoBackground;
     if (ImGui::Begin("SubtitleOverlay", nullptr, flags))
     {
-        // Draw the measured lines individually so short final lines share
-        // the same horizontal center as the rest of the subtitle block.
         const ImVec2 origin = ImGui::GetWindowPos();
         const ImU32 color = ImGui::GetColorU32(ImGuiCol_Text);
+        const ImU32 backgroundColor = ImGui::ColorConvertFloat4ToU32(g_subtitleSettings.backgroundColor);
+        for (const auto& line : layout.lines) {
+            if (line.text.empty()) continue;
+            const ImVec2 start(origin.x + line.backgroundOffset.x,
+                               origin.y + line.backgroundOffset.y);
+            const ImVec2 finish(start.x + line.backgroundSize.x,
+                                start.y + line.backgroundSize.y);
+            ImGui::GetWindowDrawList()->AddRectFilled(start, finish, backgroundColor, 4.0f);
+        }
         for (const auto& line : layout.lines)
             ImGui::GetWindowDrawList()->AddText(
                 ImVec2(origin.x + line.offset.x, origin.y + line.offset.y), color, line.text.c_str());
     }
     ImGui::End();
     ImGui::PopStyleVar(4);
-    ImGui::PopStyleColor(2);
+    ImGui::PopStyleColor();
     ImGui::PopFont();
 }

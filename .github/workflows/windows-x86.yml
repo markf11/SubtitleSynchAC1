@@ -1,0 +1,44 @@
+name: Windows x86 build and tests
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - name: Checkout pinned source and submodules
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Configure x86
+        run: cmake -S . -B build/ci -G "Visual Studio 17 2022" -A Win32
+      - name: Build
+        run: cmake --build build/ci --config Release --parallel
+      - name: Native x86 tests
+        run: ctest --test-dir build/ci -C Release --output-on-failure
+      - name: Python review tests
+        shell: pwsh
+        run: |
+          python --version
+          python -m unittest discover -s tests -p test_f2_candidates.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests -p test_garnier_capture.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record build provenance and checksum
+        run: python tools/write_build_manifest.py --binary build/ci/Release/SubtitleSynchAC1.asi --output build/runtime-artifact
+      - name: Upload ASI-only review build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: SubtitleSynchAC1-x86-${{ github.sha }}
+          path: build/runtime-artifact/
+          if-no-files-found: error
+          retention-days: 30

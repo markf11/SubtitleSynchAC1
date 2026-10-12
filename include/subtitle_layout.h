@@ -7,6 +7,8 @@ struct SubtitleLine {
     std::string text;
     ImVec2 offset;
     float width;
+    ImVec2 backgroundOffset;
+    ImVec2 backgroundSize;
 };
 
 struct SubtitleLayout {

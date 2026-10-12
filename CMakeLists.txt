@@ -4,6 +4,10 @@ project(SubtitleSynchAC1 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # force 32-bit build
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Build must be x86 (32-bit), not x64.")
@@ -20,6 +24,7 @@ add_library(SubtitleSynchAC1 SHARED
     src/playback_clock.cpp
     src/pause_manager_probe.cpp
     src/save_activity_monitor.cpp
+    src/press_prompt_detector.cpp
     src/audio_resolver.cpp
     src/overlay_ui.cpp
     src/subtitle_layout.cpp
@@ -27,6 +32,7 @@ add_library(SubtitleSynchAC1 SHARED
     src/console.cpp
     src/hooks/asm_hooks.cpp
     src/hooks/pause_hooks.cpp
+    src/hooks/press_prompt_hook.cpp
     src/hooks/dx9_hook.cpp
     src/hooks/dx10_hook.cpp
     src/ini_config.cpp
@@ -140,6 +146,16 @@ if(BUILD_TESTING)
     target_include_directories(layout_tests PRIVATE include)
     target_link_libraries(layout_tests PRIVATE imgui)
     add_test(NAME layout_tests COMMAND layout_tests)
+    add_executable(press_prompt_tests tests/press_prompt_tests.cpp src/press_prompt_detector.cpp
+        src/hooks/press_prompt_hook.cpp src/pattern_scan.cpp src/pattern_match.cpp src/diagnostics.cpp)
+    target_include_directories(press_prompt_tests PRIVATE include external/xbyak)
+    target_compile_definitions(press_prompt_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(press_prompt_tests PRIVATE minhook)
+    add_test(NAME press_prompt_tests COMMAND press_prompt_tests)
+    add_executable(diagnostics_tests tests/diagnostics_tests.cpp src/diagnostics.cpp)
+    target_include_directories(diagnostics_tests PRIVATE include)
+    target_compile_definitions(diagnostics_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME diagnostics_tests COMMAND diagnostics_tests)
     add_test(NAME tutorial_replay COMMAND replay_events
         ${ROOT}/tests/fixtures/tutorial-v2.log ${ROOT}/tests/fixtures/subtitles.json)
     set_tests_properties(tutorial_replay PROPERTIES PASS_REGULAR_EXPRESSION "events=6 exact_matches=1")

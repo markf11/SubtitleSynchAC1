@@ -1,102 +1,63 @@
-# Audio synchronization repair (diagnostic build v2)
+# Audio synchronization repair
 
-The Ubisoft DX9 audio callback supplies event IDs, while the subtitle database
-uses audio resource IDs. Replacing the leading `1` with `2` is not a reliable
-mapping. A live resource-table inspection found event `0x10a80305` referencing
-audio `0x20a802f9`; the old implementation instead requested `0x20a80305`.
-Events `0x10a800e3` and `0x10a800e4` happened to retain the same lower bits.
+The Ubisoft DX9 audio callback can supply event IDs, while the subtitle database
+uses audio resource IDs. Replacing the leading `1` with `2` was not reliable.
+Live resource-table inspection found event `0x10a80305` referencing audio
+`0x20a802f9`; the original implementation requested `0x20a80305` instead.
 
-The new resolver preserves direct audio IDs and follows the verified direct-play
-event reference. It checks manager bounds, root identity, action type and the
-referenced resource ID using copied memory. Composite/random/conditional actions
-remain unresolved: no arbitrary child or numeric offset is selected. This is a
-deliberate coverage limit, visible as `resolution=2` in diagnostics.
+The resolver prioritizes original audio IDs and follows the verified direct-play
+event reference. It checks manager bounds, root identity, action type and referenced
+resource ID using copied memory. Composite/random/conditional actions remain
+unresolved instead of selecting an arbitrary child or numeric offset.
 
-## Hook and runtime changes
+## Hook contracts
 
-- Scan executable sections and require exactly one match. The signature includes
-  the resource-manager lookup, event-ID load, arguments and result handling.
+- Scan executable PE sections and require exactly one signature match.
 - Relocate and execute the original CALL through MinHook, preserving its return
-  value and side effects. Preserve registers, flags and floating-point state
-  around the observation callback.
-- Remove redundant pause stubs. Native instructions retain their original
-  `0x108` offsets; the old stubs incorrectly used decimal `108`.
-- Remove permanent last-ID suppression. Repeated playback may restart subtitles.
-- Use a synchronized bounded queue for multiple producers; count full/contended
-  queue drops. A zero/unresolved ID cannot masquerade as an empty queue.
-- Respect total subtitle duration even after delayed rendering, and retain
-  scheduled segment boundaries instead of accumulating frame delay.
-- Preserve extra INI sections when saving overlay preferences.
-- Never copy translation assets into the output directory as a build step.
+  value and side effects.
+- Preserve registers, flags and floating-point/SIMD state around observation.
+- Do not install the former pause stubs that used decimal `108` instead of `0x108`.
+- Remove the permanent last-ID filter so a new playback can reuse the same ID.
+- Queue notifications with bounded capacity and account for dropped/contended pushes.
+- Retain scheduled subtitle segment boundaries rather than accumulating frame delay.
 
-The current verified DX9 executable has SHA-256
+The investigated Ubisoft DX9 EXE has SHA-256
 `acb9e22d6023f96f9728205df563e2194768d157aa2c419624a15a528f74b944`.
-The observed hook CALL is at RVA `0x3e8555`, targeting VA `0x7e4ca0` with
-image base `0x400000`. Filenames can be misleading: the local DX9 executable
-was named `AssassinsCreed_Dx10.exe`. Do not rename or replace executables as
-part of installing this patch.
+The observed hook CALL was at RVA `0x3e8555`, with image base `0x400000`.
+The implementation uses its checked signature, not a hard-coded CALL address.
+The local EXE filename was misleadingly `AssassinsCreed_Dx10.exe`; executable
+names alone do not establish the render build. No game EXE is committed here.
 
-## Build and checks
+## Build, record and review
 
-Clone with `--recurse-submodules`. On Windows, install CMake, Ninja and
-LLVM-MinGW, then run in PowerShell:
+Use the [current build instructions](build-and-verify.md). Native tests execute
+the actual x86 audio detour against synthetic memory and validate CALL effects,
+return value, preserved state, ID matching and repeated capture.
 
-```powershell
-$env:LLVM_MINGW_ROOT = 'C:\tools\llvm-mingw'
-cmake -S . -B build/x86 -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/llvm-mingw-x86.cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build/x86
-ctest --test-dir build/x86 --output-on-failure
-```
-
-`subtitle_tests` checks the observed resource reference, exact lookup priority,
-invalid/unresolved IDs, repeats, timing, queue accounting and pattern ambiguity.
-`hook_tests` executes the production detour in a real x86 process and checks
-the original CALL's side effect/result, preserved ESI and repeated resolved events.
-
-With Python and `pefile`, run `python tools/verify_game.py "<game directory>"`
-to verify signature uniqueness and compare subtitle ID/timing tags without
-writing game files. The local Hungarian database has 2618 entries; its IDs and
-timing tags match upstream. Automated checks do not establish which sentence
-was actually spoken.
-
-## Installation, diagnostics and rollback
-
-Exit the game. Back up `scripts/SubtitleSynchAC1.asi` and its INI, plus your
-translation JSON and font. Copy only `build/x86/SubtitleSynchAC1.asi` into
-`scripts`. Keep the installed ASI loader, `subtitles.json`, `subtitles.ttf` and
-existing INI settings. The patch package intentionally contains no subtitle DB.
-
-Add this section to the existing INI to enable diagnostics:
+Recording is off by default. F1 enables **Record diagnostics and F2 markers**
+for the current run. For an explicit startup opt-in, set:
 
 ```ini
 [Diagnostics]
-Enabled=1
+StartOnLaunch=1
 ```
 
-Restart the game. `scripts/SubtitleSynchAC1.log` appends a startup record with
-build tag `audio-sync-v2-resolved`, executable identity and hook matches.
-Audio records include event time, producer thread, raw event ID, resolved audio
-ID and resolution (`0` exact, `1` direct reference, `2` unresolved). Subsequent
-records show database lookup, subtitle start/replacement, display changes and
-queue drops. Set `Enabled=0` and restart to disable logging.
+Old `Enabled=1` flags do not enable recording. Current diagnostics identify
+`build=audio-sync-v5.16-garnier-diagnostics`. Resolution values are `0` for an
+original audio ID, `1` for a verified direct reference, and `2` for unresolved.
+The [capture guide](subtitle-capture.md) describes lifetime/segment/visibility
+records and the [Garnier guide](garnier-diagnostics.md) describes focused review.
+Notification times and database matches alone do not establish spoken-text
+correctness or the actual audible start/end of a sound.
 
-Replay a captured session offline with:
+`replay_events` can review a saved diagnostic log without running the game:
 
 ```powershell
-build/x86/replay_events.exe "<SubtitleSynchAC1.log>" "<subtitles.json>"
+build/x86/replay_events.exe "SubtitleSynchAC1.log" "subtitles.json"
 ```
 
-The CSV reports database matches; it does not certify spoken-text correctness.
-Keep logs and extracted game files out of the repository.
+## Install and roll back
 
-For rollback, exit the game and restore the backed-up ASI and INI. The
-translation does not need restoration unless it was independently changed.
-
-## Acceptance still required
-
-Replay the Animus tutorial with English speech and Hungarian subtitles, record
-any wrong/missing sentence and repeat the same playback. Correlate its event,
-resolution, lookup and display records. For speech without a usable event,
-investigate the actual playback route before extending the resolver or hook.
-Test Altaïr's memory-corridor dialogue separately. Neither full tutorial coverage
-nor memory-corridor coverage follows from the unit tests or resource snapshot.
+With the game closed, back up and replace only the ASI. Retain the installed
+loader, translation JSON, font and INI. Restore the backed-up ASI with the game
+closed to revert. Building does not copy assets into a game installation.

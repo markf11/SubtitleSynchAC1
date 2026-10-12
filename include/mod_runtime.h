@@ -17,6 +17,7 @@ class ModRuntime {
 public:
     void init();
     void update();
+    void setPressPromptActive(bool active);
 
     void onPause(bool paused);
     void onFocus(bool focused);
@@ -30,15 +31,19 @@ public:
     HWND m_window;
 
     bool m_paused = false;
+    bool m_audioHookReady = false;
     std::string m_lastDiagnosticText;
     bool m_lastDiagnosticVisible = false;
     bool m_lastDiagnosticPaused = false;
     EscapePauseTracker m_escapePause;
     ResumeDelayGate m_resumeGate;
+    MenuPauseTracker m_menuPause;
     PauseManagerProbe m_pauseManagerProbe;
     SaveActivityMonitor m_saveActivityMonitor;
     bool m_escapeSampled = false;
     bool m_lastEscapeDown = false;
+    bool m_f2Sampled = false;
+    bool m_lastF2Down = false;
     ULONGLONG m_lastEscapeReleaseMs = 0;
     bool m_pauseManagerSampled = false;
     bool m_lastPauseManagerPaused = false;
@@ -54,6 +59,9 @@ public:
     bool m_lastDiagnosticDebugWindow = false;
     bool m_lastDiagnosticDebugPreview = false;
     bool m_lastDiagnosticSaveActivity = false;
+    bool m_lastDiagnosticsEnabled = false;
+    uint64_t m_lastDiagnosticsSession = 0;
+    bool m_pressPromptActive = false;
     uint32_t m_captureMarkerSequence = 0;
     std::deque<AudioEvent> m_pausedDialogueEvents;
 };

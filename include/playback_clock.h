@@ -66,6 +66,8 @@ public:
         return EscapePauseAction::None;
     }
 
+    bool closingOnRelease() const { return m_resumeOnRelease; }
+
 private:
     bool m_escapeDown = false;
     bool m_resumeOnRelease = false;
@@ -100,4 +102,29 @@ public:
 private:
     bool m_pending = false;
     Clock::time_point m_deadline{};
+};
+
+// Input-independent: nested menus remain paused, and every way of closing the
+// last menu uses the same wall-time gate. Reopening cancels a pending resume.
+class MenuPauseTracker {
+public:
+    using Clock = ResumeDelayGate::Clock;
+    EscapePauseAction update(bool menuPaused, std::chrono::milliseconds delay,
+                            Clock::time_point now = Clock::now()) {
+        if (menuPaused) {
+            m_gate.cancel();
+            const bool entered = !m_menuPaused;
+            m_menuPaused = true;
+            return entered ? EscapePauseAction::Pause : EscapePauseAction::None;
+        }
+        if (m_menuPaused) {
+            m_menuPaused = false;
+            if (m_gate.request(delay, now)) return EscapePauseAction::Resume;
+        }
+        return m_gate.update(now) ? EscapePauseAction::Resume : EscapePauseAction::None;
+    }
+    bool pending() const { return m_gate.pending(); }
+private:
+    bool m_menuPaused = false;
+    ResumeDelayGate m_gate;
 };

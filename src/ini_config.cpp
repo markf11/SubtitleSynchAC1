@@ -48,7 +48,7 @@ bool SubtitleConfig::load()
         g_subtitleSettings.fontSize = ini.Get<float>("Subtitle", "SubtitleFontSize", 30.0f);
         g_subtitleSettings.autoScale = ini.Get<bool>("Subtitle", "AutoScale", true);
         g_subtitleSettings.referenceHeight = ini.Get<float>("Subtitle", "ReferenceHeight", 1080.0f);
-        g_subtitleSettings.maxWidthPercent = ini.Get<float>("Subtitle", "MaxWidthPercent", 75.0f);
+        g_subtitleSettings.maxWidthPercent = ini.Get<float>("Subtitle", "MaxWidthPercent", 65.0f);
         g_subtitleSettings.resumeDelayMs = ini.Get<int>("Subtitle", "ResumeDelayMs", 500);
         if (g_subtitleSettings.resumeDelayMs < 0) g_subtitleSettings.resumeDelayMs = 0;
         if (g_subtitleSettings.resumeDelayMs > 2000) g_subtitleSettings.resumeDelayMs = 2000;

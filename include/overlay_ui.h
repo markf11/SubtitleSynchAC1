@@ -26,6 +26,7 @@ public:
     std::string currentText() const { return m_currentText; }
     std::string debugText() const { return m_debugInput; }
     void setSaveIndicatorActive(bool active) { m_saveIndicatorActive = active; }
+    void setPressPromptActive(bool active) { m_pressPromptActive = active; }
     void showCaptureMarker(uint32_t sequence);
 
 private:
@@ -45,6 +46,11 @@ private:
     bool m_debugVisible = false;
     bool m_debugWindow = false;
     bool m_saveIndicatorActive = false;
+    bool m_pressPromptActive = false;
+    bool m_layoutLogged = false;
+    float m_lastLayoutX = 0, m_lastLayoutY = 0;
+    float m_lastLayoutWidth = 0, m_lastLayoutHeight = 0;
+    unsigned m_lastLayoutLiftSources = 0;
     uint32_t m_captureMarkerSequence = 0;
     std::chrono::steady_clock::time_point m_captureMarkerUntil{};
     

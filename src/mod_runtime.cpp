@@ -4,6 +4,7 @@
 
 #include "mod_runtime.h"
 #include "hooks/asm_hooks.h"
+#include "hooks/press_prompt_hook.h"
 #include "globals.h"
 #include "diagnostics.h"
 #include "playback_clock.h"
@@ -24,8 +25,8 @@ void ModRuntime::init(void) {
     std::string secondaryJsonPath = baseDir + "\\subtitles_secondary.json";
 
     Diagnostics::init(baseDir);
-    if (Diagnostics::enabled())
-        m_pauseManagerProbe.initialize();
+    const bool pauseManagerReady = m_pauseManagerProbe.initialize();
+    PressPromptHook::initialize();
     if (!m_engine.load(jsonPath)) {
         Diagnostics::error("subtitle database could not be loaded");
     } else {
@@ -37,16 +38,22 @@ void ModRuntime::init(void) {
         } else {
             Diagnostics::log("secondary_database absent path=%s", secondaryJsonPath.c_str());
         }
-        applyASMPatches();
-        // The old executable signatures do not represent the ESC pause menu
-        // in the installed DX10 build. Menu pause is observed from the ESC
-        // edge in update(), where every Present frame is available.
-        Diagnostics::log("pause_tracking source=escape-edge+configured-resume-delay");
+        m_audioHookReady = applyASMPatches();
+        Diagnostics::log("pause_tracking source=menu-manager-state manager_ready=%u",
+            pauseManagerReady);
     }
     m_overlay.init();
     const bool saveMonitorReady = m_saveActivityMonitor.initialize();
     Diagnostics::log("save_activity_monitor ready=%u directory=%ls",
         saveMonitorReady, saveMonitorReady ? m_saveActivityMonitor.directory().c_str() : L"");
+}
+
+void ModRuntime::setPressPromptActive(bool active) {
+    if (active != m_pressPromptActive) {
+        Diagnostics::log("press_prompt active=%u", active);
+        m_pressPromptActive = active;
+    }
+    m_overlay.setPressPromptActive(active);
 }
 
 void ModRuntime::update(void) {
@@ -59,12 +66,20 @@ void ModRuntime::update(void) {
     _controlfp_s(nullptr, _RC_NEAR, _MCW_RC);
 
     const auto dropped = g_AudioQueue.takeDropped();
-    if (dropped) Diagnostics::log("queue_dropped count=%u", dropped);
+    if (dropped) {
+        Diagnostics::log("queue_dropped count=%u", dropped);
+        Diagnostics::captureQueueDrops(GetTickCount64(), dropped);
+    }
 
     const bool gameHasFocus = GetForegroundWindow() == m_window;
+    const bool f2Down = (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
+    const bool f2Pressed = m_f2Sampled && !m_lastF2Down && f2Down;
+    m_f2Sampled = true;
+    m_lastF2Down = f2Down;
     EscapePauseAction pauseAction = EscapePauseAction::None;
+    bool escapeDown = m_lastEscapeDown;
     if (gameHasFocus) {
-        const bool escapeDown = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+        escapeDown = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
         if (!m_escapeSampled) {
             m_escapeSampled = true;
             m_lastEscapeDown = escapeDown;
@@ -75,8 +90,7 @@ void ModRuntime::update(void) {
             if (!escapeDown)
                 m_lastEscapeReleaseMs = edgeTime;
         }
-        pauseAction = m_escapePause.update(escapeDown, g_playbackClock.paused());
-        if (Diagnostics::captureEnabled() && (GetAsyncKeyState(VK_F2) & 1)) {
+        if (Diagnostics::captureEnabled() && f2Pressed) {
             ++m_captureMarkerSequence;
             double elapsed = 0.0;
             if (m_runtime.active())
@@ -90,17 +104,25 @@ void ModRuntime::update(void) {
                 static_cast<unsigned long>(m_activeSubtitleId), elapsed);
         }
     }
+    auto setPlaybackPaused = [](bool paused, const char* source) {
+        if (!g_playbackClock.setPaused(paused))
+            return;
+        Diagnostics::log("playback_pause paused=%u source=%s", paused, source);
+    };
+
     PauseManagerSnapshot pauseManager;
-    if (Diagnostics::enabled() && m_pauseManagerProbe.sample(pauseManager)) {
-        const bool managerPaused = pauseManager.committedCount != 0;
+    if (m_pauseManagerProbe.sample(pauseManager)) {
+        const bool managerPaused = pauseManager.menuOpen;
         const bool changed = !m_pauseManagerSampled ||
+            managerPaused != m_lastPauseManagerPaused ||
             pauseManager.activeCount != m_lastPauseManagerActiveCount ||
             pauseManager.committedCount != m_lastPauseManagerCommittedCount;
         if (changed) {
-            Diagnostics::log("pause_manager_state object=%p active_count=%lu committed_count=%lu paused=%u",
+            Diagnostics::log("pause_manager_state object=%p active_count=%lu committed_count=%lu counts_available=%u menu_object=%p menu_open=%u paused=%u",
                 reinterpret_cast<void*>(pauseManager.object),
                 static_cast<unsigned long>(pauseManager.activeCount),
-                static_cast<unsigned long>(pauseManager.committedCount), managerPaused);
+                static_cast<unsigned long>(pauseManager.committedCount), pauseManager.countsAvailable,
+                reinterpret_cast<void*>(pauseManager.menuObject), pauseManager.menuOpen, managerPaused);
         }
         if (m_pauseManagerSampled && m_lastPauseManagerPaused && !managerPaused) {
             const auto now = GetTickCount64();
@@ -111,17 +133,28 @@ void ModRuntime::update(void) {
                 Diagnostics::log("pause_manager_resume escape_release_delay_ms=unavailable");
             }
         }
+        const bool pendingBefore = m_menuPause.pending();
+        m_resumeGate.cancel();
+        if (!m_pauseManagerSampled && g_playbackClock.paused())
+            m_menuPause.update(true, std::chrono::milliseconds(g_subtitleSettings.resumeDelayMs));
+        const auto action = m_menuPause.update(managerPaused,
+            std::chrono::milliseconds(g_subtitleSettings.resumeDelayMs));
+        if (action == EscapePauseAction::Pause)
+            setPlaybackPaused(true, "menu-manager-enter");
+        else if (action == EscapePauseAction::Resume)
+            setPlaybackPaused(false, "menu-manager-resume-delay");
+        if (!pendingBefore && m_menuPause.pending())
+            Diagnostics::log("playback_resume_pending source=menu-manager-exit delay_ms=%d",
+                g_subtitleSettings.resumeDelayMs);
         m_pauseManagerSampled = true;
         m_lastPauseManagerPaused = managerPaused;
         m_lastPauseManagerActiveCount = pauseManager.activeCount;
         m_lastPauseManagerCommittedCount = pauseManager.committedCount;
+    } else if (!m_pauseManagerSampled && gameHasFocus) {
+        // Input edges are a fallback only. They must never release a nested
+        // menu, or bypass the delay used by mouse/controller Resume.
+        pauseAction = m_escapePause.update(escapeDown, g_playbackClock.paused());
     }
-
-    auto setPlaybackPaused = [](bool paused, const char* source) {
-        if (!g_playbackClock.setPaused(paused))
-            return;
-        Diagnostics::log("playback_pause paused=%u source=%s", paused, source);
-    };
 
     bool resumeNow = false;
     if (pauseAction == EscapePauseAction::Pause) {
@@ -141,6 +174,20 @@ void ModRuntime::update(void) {
     }
     if (resumeNow)
         setPlaybackPaused(false, "configured-resume-delay");
+
+    setPressPromptActive(PressPromptHook::visible(GetTickCount64()));
+    const auto diagnosticsSession = Diagnostics::recordingSession();
+    const bool recordingStarted = Diagnostics::enabled() &&
+        (!m_lastDiagnosticsEnabled || diagnosticsSession != m_lastDiagnosticsSession);
+    if (recordingStarted) {
+        Diagnostics::log("runtime_snapshot pause_manager_slot=%p menu_manager_slot=%p prompt_hook=%p audio_hook_ready=%u paused=%u resume_delay_ms=%d",
+            reinterpret_cast<void*>(m_pauseManagerProbe.pointerSlot()),
+            reinterpret_cast<void*>(m_pauseManagerProbe.menuPointerSlot()),
+            reinterpret_cast<void*>(PressPromptHook::address()), m_audioHookReady, g_playbackClock.paused(),
+            g_subtitleSettings.resumeDelayMs);
+    }
+    m_lastDiagnosticsEnabled = Diagnostics::enabled();
+    m_lastDiagnosticsSession = diagnosticsSession;
 
     const bool saveActivity = m_saveActivityMonitor.update(
         g_subtitleSettings.saveIndicatorDurationMs);
@@ -174,14 +221,22 @@ void ModRuntime::update(void) {
             static_cast<unsigned long long>(event.timestampMs),
             static_cast<unsigned long>(event.threadId), static_cast<unsigned long>(event.id),
             static_cast<unsigned long>(event.rawId), static_cast<unsigned long>(event.resolution));
-        if (event.resolution == Resolution::Unresolved) continue;
+        if (event.resolution == Resolution::Unresolved) {
+            Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+                "unresolved-resource", m_activeSubtitleId);
+            continue;
+        }
         if (queuePlayback.paused) {
             if (eventPriority == SubtitlePriority::None) {
+                Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+                    "paused-unmapped", m_activeSubtitleId);
                 Diagnostics::log("paused_dialogue action=discard-unmapped id=0x%08lx",
                     static_cast<unsigned long>(event.id));
                 continue;
             }
             if (event.id == m_activeSubtitleId) {
+                Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+                    "paused-active-duplicate", m_activeSubtitleId);
                 Diagnostics::log("paused_dialogue action=discard-active-duplicate id=0x%08lx",
                     static_cast<unsigned long>(event.id));
                 continue;
@@ -190,16 +245,22 @@ void ModRuntime::update(void) {
                 m_pausedDialogueEvents.back().id == event.id &&
                 event.timestampMs >= m_pausedDialogueEvents.back().timestampMs &&
                 event.timestampMs - m_pausedDialogueEvents.back().timestampMs <= 250) {
+                Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+                    "paused-near-duplicate", m_activeSubtitleId);
                 Diagnostics::log("paused_dialogue action=discard-near-duplicate id=0x%08lx",
                     static_cast<unsigned long>(event.id));
                 continue;
             }
             if (m_pausedDialogueEvents.size() >= 32) {
+                Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+                    "paused-buffer-full", m_activeSubtitleId);
                 Diagnostics::log("paused_dialogue action=discard-capacity id=0x%08lx",
                     static_cast<unsigned long>(event.id));
                 continue;
             }
             m_pausedDialogueEvents.push_back(event);
+            Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+                "buffered-until-resume", m_activeSubtitleId);
             Diagnostics::log("paused_dialogue action=buffer id=0x%08lx pending=%zu",
                 static_cast<unsigned long>(event.id), m_pausedDialogueEvents.size());
             continue;
@@ -212,6 +273,10 @@ void ModRuntime::update(void) {
     if (runtimeUpdate.kind == SubtitleUpdateKind::SegmentChanged) {
         const auto elapsed = std::chrono::duration<double>(playback.now - m_activeSubtitleStart).count();
         const auto captureNow = GetTickCount64();
+        for (size_t index = runtimeUpdate.previousIndex + 1;
+             index < runtimeUpdate.currentIndex && index < m_activeSubtitleSegments.size(); ++index)
+            Diagnostics::captureSegment("subtitle_segment_skipped", captureNow, m_activeSubtitleId,
+                index, elapsed, m_activeSubtitleSegments[index].text);
         if (runtimeUpdate.previousIndex < m_activeSubtitleSegments.size())
             Diagnostics::captureSegment("subtitle_segment_end", captureNow, m_activeSubtitleId,
                 runtimeUpdate.previousIndex, elapsed,
@@ -271,7 +336,7 @@ void ModRuntime::update(void) {
     m_overlay.setVisible(visible);
     m_overlay.setText(text);
 
-    if (visible != m_lastDiagnosticVisible || text != m_lastDiagnosticText) {
+    if (recordingStarted || visible != m_lastDiagnosticVisible || text != m_lastDiagnosticText) {
         const char* reason = visible ? (debugWindow && debugPreview ? "debug-preview" : "game-subtitle")
             : playback.paused ? "pause-menu"
             : !m_runtime.active() ? "subtitle-inactive"
@@ -303,9 +368,17 @@ bool ModRuntime::handleVoiceline(const AudioEvent& event)
     Diagnostics::log("lookup id=0x%08lx key=0x%08lx hit=%d priority=%s",
         static_cast<unsigned long>(id), static_cast<unsigned long>(id),
         static_cast<bool>(match), priorityName(match.priority));
-    if (!match) return false;
+    if (!match) {
+        Diagnostics::captureDecision(GetTickCount64(), id, event.rawId,
+            "missing-subtitle", m_activeSubtitleId);
+        return false;
+    }
     auto segments = SubtitleEngine::parseSegments(SubtitleEngine::stripTags(match.raw));
-    if (segments.empty()) return false;
+    if (segments.empty()) {
+        Diagnostics::captureDecision(GetTickCount64(), id, event.rawId,
+            "empty-subtitle", m_activeSubtitleId);
+        return false;
+    }
     const auto now = g_playbackClock.state().now;
     const auto displayNowMs = GetTickCount64();
     if (m_runtime.active() &&
