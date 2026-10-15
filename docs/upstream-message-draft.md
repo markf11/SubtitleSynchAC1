@@ -8,6 +8,15 @@ features. The current source is at:
 
 https://github.com/markf11/SubtitleSynchAC1
 
+An installable ASI-only update, with source/build metadata and checksums, is here:
+
+https://github.com/markf11/SubtitleSynchAC1/releases/tag/v5.16
+
+The release tag points to the exact successful CI source commit. The public
+source comparison against your upstream baseline is:
+
+https://github.com/markf11/SubtitleSynchAC1/compare/9e6e93ad7e7c38f9953b1f7bc65b1da666d78311...v5.16
+
 The main changes are verified event-to-audio resource mapping, safer hooks that
 preserve the original game call, repeat playback handling, menu-aware pause/resume
 for keyboard/mouse/controller, resolution-based sizing and centered wrapping with

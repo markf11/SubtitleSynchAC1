@@ -12,6 +12,25 @@ Hungarian UI archives, extracted game files or private gameplay recordings.
 The repository retains the upstream English database and earlier small,
 optional subtitle patches; translation editing is separate from runtime behavior.
 
+## Download the installable runtime
+
+**[Download v5.16 for Windows x86](https://github.com/markf11/SubtitleSynchAC1/releases/download/v5.16/SubtitleSynchAC1-v5.16-runtime-x86.zip)**
+— [release notes and checksums](https://github.com/markf11/SubtitleSynchAC1/releases/tag/v5.16).
+
+This is an ASI-only update for an existing SubtitleSynchAC1 installation. With
+the game closed, back up and replace `scripts/SubtitleSynchAC1.asi`; keep your
+installed ASI loader, subtitle JSON, font and INI. The ZIP includes English and
+Hungarian installation notes, the original license, source/build metadata and
+checksums. It contains the unchanged ASI from the successful public CI build.
+It is marked as a review prerelease; read the compatibility limits below.
+
+Releases assets do not depend on the temporary Actions artifact download.
+GitHub's **Code → Download ZIP** retrieves source code; use the release asset
+linked above for the compiled mod.
+
+[Magyar funkció- és javításlista](docs/runtime-changes.hu.md) ·
+[English runtime change list](docs/runtime-changes.md)
+
 ## Runtime changes
 
 - Resolve verified event-to-audio resource references instead of guessing an ID prefix.
