@@ -14,9 +14,8 @@ uint64_t captureLastFlush = 0;
 std::string logDirectory;
 std::atomic<bool> logEnabled{false};
 std::atomic<bool> captureActive{false};
-std::atomic<Diagnostics::RecordingTarget> activeTarget{Diagnostics::RecordingTarget::General};
 std::atomic<uint64_t> sessionSequence{0};
-constexpr const char* Build = "audio-sync-v5.16-garnier-diagnostics";
+constexpr const char* Build = "audio-sync-v5.22";
 
 std::string oneLine(const std::string& value) {
     std::string result;
@@ -65,9 +64,8 @@ void init(const std::string& directory) {
 bool enabled() { return logEnabled.load(std::memory_order_acquire); }
 bool captureEnabled() { return captureActive.load(std::memory_order_acquire); }
 bool recording() { return enabled() || captureEnabled(); }
-RecordingTarget recordingTarget() { return activeTarget.load(std::memory_order_acquire); }
 uint64_t recordingSession() { return sessionSequence.load(std::memory_order_acquire); }
-bool setRecording(bool active, RecordingTarget target) {
+bool setRecording(bool active) {
     std::lock_guard<std::mutex> lock(logMutex);
     if (!active) {
         closeRecording("recording-disabled");
@@ -76,9 +74,8 @@ bool setRecording(bool active, RecordingTarget target) {
     if (logDirectory.empty()) return false;
     // Opening both is atomic from the UI's point of view: an incomplete
     // recording is rejected instead of silently losing F2 or pause events.
-    if (logFile && captureFile && recordingTarget() == target) return true;
-    const bool garnier = target == RecordingTarget::GarnierConfession;
-    const auto stem = logDirectory + (garnier ? "\\SubtitleSynchAC1.garnier" : "\\SubtitleSynchAC1");
+    if (logFile && captureFile) return true;
+    const auto stem = logDirectory + "\\SubtitleSynchAC1";
     FILE* newLog = std::fopen((stem + ".log").c_str(), "a");
     FILE* newCapture = std::fopen((stem + ".capture.tsv").c_str(), "a");
     if (!newLog || !newCapture) {
@@ -87,17 +84,15 @@ bool setRecording(bool active, RecordingTarget target) {
         OutputDebugStringA("SubtitleSynchAC1: cannot open recording files\n");
         return false;
     }
-    closeRecording("profile-switch");
-    activeTarget.store(target, std::memory_order_release);
+    closeRecording("reopen");
     logFile = newLog;
     captureFile = newCapture;
     captureSessionStart = GetTickCount64();
     captureLastFlush = captureSessionStart;
     std::setvbuf(captureFile, nullptr, _IOFBF, 64 * 1024);
     std::fprintf(captureFile,
-        "session\t%llu\t0\tbuild=%s\ttarget=%s\n#type\ttick_ms\tsession_ms\tfields\n",
-        static_cast<unsigned long long>(captureSessionStart), Build,
-        garnier ? "garnier-confession" : "general");
+        "session\t%llu\t0\tbuild=%s\n#type\ttick_ms\tsession_ms\tfields\n",
+        static_cast<unsigned long long>(captureSessionStart), Build);
     char exe[MAX_PATH]{};
     GetModuleFileNameA(nullptr, exe, MAX_PATH);
     auto base = reinterpret_cast<const unsigned char*>(GetModuleHandleA(nullptr));
@@ -239,6 +234,20 @@ void captureDecision(uint64_t atMs, uint32_t id, uint32_t rawId,
     std::fprintf(captureFile, "id=0x%08lx\traw=0x%08lx\treason=%s\tactive_id=0x%08lx\n",
         static_cast<unsigned long>(id), static_cast<unsigned long>(rawId), reason,
         static_cast<unsigned long>(activeId));
+}
+void captureVoiceEnd(uint64_t atMs, uint32_t id, uint32_t rawId, const char* priority,
+                     uint64_t elapsedMs, double databaseDuration, bool pausedDuring, const char* reason) {
+    if (!captureEnabled()) return;
+    std::lock_guard<std::mutex> lock(logMutex);
+    if (!captureFile) return;
+    capturePrefix("voice_end", atMs);
+    std::fprintf(captureFile,
+        "id=0x%08lx\traw=0x%08lx\tpriority=%s\tvoice_ms=%llu\tdb_duration_ms=%.0f"
+        "\tvoice_minus_db_ms=%.0f\tpaused_during=%u\treason=%s\n",
+        static_cast<unsigned long>(id), static_cast<unsigned long>(rawId), priority,
+        static_cast<unsigned long long>(elapsedMs), databaseDuration * 1000.0,
+        static_cast<double>(elapsedMs) - databaseDuration * 1000.0, pausedDuring, reason);
+    std::fflush(captureFile);
 }
 void captureQueueDrops(uint64_t atMs, uint32_t count) {
     if (!captureEnabled()) return;

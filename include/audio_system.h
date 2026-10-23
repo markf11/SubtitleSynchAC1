@@ -11,6 +11,16 @@ struct AudioEvent {
     uint64_t timestampMs = 0;
     uint32_t rawId = 0;
     Resolution resolution = Resolution::Exact;
+    // Leaf voice starts only: how loud the engine plays this voice for the
+    // listener. levelKnown=false keeps the old always-show behaviour.
+    bool levelKnown = false;
+    bool positional = false;
+    float distance = -1.0f;
+    float levelDb = 0.0f;
+    uint32_t emitter = 0xffffffffu;
+    // The started voice instance; the render thread re-reads its distance
+    // while the line plays. 0 = unknown.
+    uintptr_t instance = 0;
 };
 
 // Multiple audio threads are allowed. Never block or allocate in a callback.

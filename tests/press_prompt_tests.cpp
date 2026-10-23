@@ -16,11 +16,10 @@ void check(bool value, const char* message) {
 int main() {
     try {
         check(isInteractionPrompt(L"<\\ PRESS ANY BUTTON TO INTERACT >"), "English interaction prompt");
-        check(isInteractionPrompt(L"<\\ NYOMJ MEG EGY GOMBOT AZ INTERAKCIÓHOZ >"), "Hungarian interaction prompt");
-        check(isInteractionPrompt(L"Nyomj meg egy gombot az interakcióhoz"), "Hungarian case folding");
+        check(isInteractionPrompt(L"Press any key to interact"), "case folding");
         check(isInteractionPrompt(L"PRESS  ANY\tBUTTON TO INTERACT"), "whitespace and button icons are independent");
         check(!isInteractionPrompt(L"< Press Any Key To Continue >"), "title prompt must not move subtitles");
-        check(!isInteractionPrompt(L"Kérlek, Tamír, nem sértésnek szántam!"), "Tamir scene is not an interaction prompt");
+        check(!isInteractionPrompt(L"Please, Tamir, I meant no offence!"), "Tamir scene is not an interaction prompt");
         check(!isInteractionPrompt(L"Saving progress. Please wait."), "save activity uses its own observer");
         InteractionPromptTracker tracker;
         check(!tracker.visible(0), "no prompt before an actual draw");

@@ -58,41 +58,16 @@ int main() {
         Diagnostics::log("disabled-event");
         Diagnostics::captureAudio(GetTickCount64(), 2, 2, 1, 1, "missing");
         check(oldLog == read(log) && oldCapture == read(capture), "no writes after disabling");
-        const auto garnierLog = directory / "SubtitleSynchAC1.garnier.log";
-        const auto garnierCapture = directory / "SubtitleSynchAC1.garnier.capture.tsv";
-        check(Diagnostics::setRecording(true), "general recording can restart");
-        const auto generalSession = Diagnostics::recordingSession();
-        // A failed profile switch must not destroy the running general session.
-        std::filesystem::create_directory(garnierCapture);
-        check(!Diagnostics::setRecording(true, Diagnostics::RecordingTarget::GarnierConfession),
-            "cannot switch to a target whose capture path is unavailable");
-        check(Diagnostics::recording() && Diagnostics::recordingSession() == generalSession &&
-            Diagnostics::recordingTarget() == Diagnostics::RecordingTarget::General,
-            "failed profile switch retains both old streams and session identity");
-        std::filesystem::remove(garnierCapture);
-        check(Diagnostics::setRecording(true, Diagnostics::RecordingTarget::GarnierConfession),
-            "Garnier profile starts without a game restart");
-        check(Diagnostics::recordingSession() > generalSession &&
-            Diagnostics::recordingTarget() == Diagnostics::RecordingTarget::GarnierConfession,
-            "successful profile switch creates a new snapshot session");
-        Diagnostics::captureAudio(GetTickCount64(), 0x20b40022, 0x10b40044, 1, 1, "primary");
+        check(Diagnostics::setRecording(true), "recording can restart");
         Diagnostics::captureAudio(GetTickCount64(), 0x20abcdef, 0x10abcdef, 1, 1, "missing");
         Diagnostics::captureDecision(GetTickCount64(), 0x20abcdef, 0x10abcdef, "missing-subtitle", 0x20b40022);
         Diagnostics::captureQueueDrops(GetTickCount64(), 3);
         Diagnostics::setRecording(false);
-        const auto focused = read(garnierCapture);
-        check(focused.find("target=garnier-confession") != std::string::npos &&
-            focused.find("id=0x20abcdef") != std::string::npos &&
-            focused.find("reason=missing-subtitle") != std::string::npos &&
-            focused.find("count=3") != std::string::npos,
-            "focused capture retains unrelated/missing sounds and loss diagnostics");
-        check(read(log).find("reason=profile-switch") != std::string::npos,
-            "profile switch closes the prior session explicitly");
-        check(Diagnostics::setRecording(true, Diagnostics::RecordingTarget::GarnierConfession),
-            "focused capture can append another replay");
-        Diagnostics::setRecording(false);
-        check(read(garnierCapture).size() > focused.size() &&
-            read(garnierCapture).find(focused) == 0, "focused replays preserve prior capture bytes");
+        const auto restarted = read(capture);
+        check(restarted.find(oldCapture) == 0 &&
+            restarted.find("reason=missing-subtitle") != std::string::npos &&
+            restarted.find("count=3") != std::string::npos,
+            "a restarted session appends missing sounds and loss diagnostics");
         std::ofstream(directory / "SubtitleSynchAC1.ini") << "[Diagnostics]\nStartOnLaunch=1\n";
         WritePrivateProfileStringA(nullptr, nullptr, nullptr,
             (directory / "SubtitleSynchAC1.ini").string().c_str());
@@ -102,8 +77,6 @@ int main() {
         std::filesystem::remove(directory / "SubtitleSynchAC1.ini");
         std::filesystem::remove(log);
         std::filesystem::remove(capture);
-        std::filesystem::remove(garnierLog);
-        std::filesystem::remove(garnierCapture);
         std::filesystem::remove(directory);
         std::cout << "PASS: manual defaults, runtime toggles, concurrent callbacks, append and explicit opt-in\n";
     } catch (const std::exception& e) {

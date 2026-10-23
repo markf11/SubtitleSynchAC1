@@ -12,6 +12,43 @@ bool shouldDisplaySubtitle(SubtitlePriority active, SubtitlePriority incoming) {
     return active != SubtitlePriority::Primary || incoming == SubtitlePriority::Primary;
 }
 
+int secondaryRank(uint32_t voiceId) {
+    switch (voiceId >> 16) {
+    case 0x2097: case 0x20d3: return 3;
+    case 0x2098: case 0x20b6: return 2;
+    default: return 1;
+    }
+}
+
+bool shouldReplaceSecondary(const SecondaryCandidate& active, bool activeSpeaking,
+                            const SecondaryCandidate& incoming) {
+    if (!activeSpeaking) return true;
+    const int a = secondaryRank(active.id), b = secondaryRank(incoming.id);
+    if (a != b) return b > a;
+    // Same kind of speaker: keep the nearer (louder) one on screen.
+    if (!active.levelKnown || !incoming.levelKnown) return true;
+    return incoming.levelDb >= active.levelDb;
+}
+
+std::string removeSoundCaptions(const std::string& text) {
+    std::string out;
+    int depth = 0;
+    for (char c : text) {
+        if (c == '[') { ++depth; continue; }
+        if (c == ']' && depth) { --depth; continue; }
+        if (depth) continue;
+        if (std::isspace(static_cast<unsigned char>(c)) && c != '\n') {
+            if (!out.empty() && out.back() != ' ' && out.back() != '\n') out.push_back(' ');
+            continue;
+        }
+        if (c == '\n' && !out.empty() && out.back() == ' ') out.pop_back();
+        if (out.empty() && c == '\n') continue;
+        out.push_back(c);
+    }
+    while (!out.empty() && std::isspace(static_cast<unsigned char>(out.back()))) out.pop_back();
+    return out;
+}
+
 bool SubtitleEngine::loadFile(
     const std::string& filepath,
     std::unordered_map<std::string, std::string>& destination) {

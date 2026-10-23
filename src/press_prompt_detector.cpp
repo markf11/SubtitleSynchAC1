@@ -8,14 +8,12 @@ bool isInteractionPrompt(std::wstring_view text) {
     normalized.reserve(text.size());
     for (wchar_t c : text) {
         if (c >= L'a' && c <= L'z') c -= L'a' - L'A';
-        if (c == L'ó') c = L'Ó';
         if (c == L'\t' || c == L'\r' || c == L'\n') c = L' ';
         if (c == L' ' && !normalized.empty() && normalized.back() == L' ') continue;
         normalized.push_back(c);
     }
     return normalized.find(L"PRESS ANY BUTTON TO INTERACT") != std::wstring::npos ||
-        normalized.find(L"PRESS ANY KEY TO INTERACT") != std::wstring::npos ||
-        normalized.find(L"NYOMJ MEG EGY GOMBOT AZ INTERAKCIÓHOZ") != std::wstring::npos;
+        normalized.find(L"PRESS ANY KEY TO INTERACT") != std::wstring::npos;
 }
 
 void InteractionPromptTracker::observe(std::wstring_view text, uint64_t now) {

@@ -25,6 +25,26 @@ struct SubtitleMatch {
 
 bool shouldDisplaySubtitle(SubtitlePriority active, SubtitlePriority incoming);
 
+// Ambient speakers compete for the one subtitle line. Banks of the packaged
+// secondary database: 0x2097 citizens to rescue and 0x20d3 their thanks rank
+// above 0x2098 guards and 0x20b6 mission targets, which rank above preachers
+// and anything else.
+int secondaryRank(uint32_t voiceId);
+
+struct SecondaryCandidate {
+    uint32_t id = 0;
+    bool levelKnown = false;
+    float levelDb = 0.0f;
+};
+// Should an incoming secondary line replace the active secondary line?
+// activeSpeaking: the active line's audio has not ended yet (only its tail).
+bool shouldReplaceSecondary(const SecondaryCandidate& active, bool activeSpeaking,
+                            const SecondaryCandidate& incoming);
+
+// Drop bracketed sound descriptions such as "[laughs]" from display text and
+// tidy the spaces around them. Timing segments are left untouched.
+std::string removeSoundCaptions(const std::string& text);
+
 class SubtitleEngine {
 public:
     bool load(const std::string& filepath);

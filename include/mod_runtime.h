@@ -12,6 +12,20 @@
 #include "playback_clock.h"
 #include "pause_manager_probe.h"
 #include "save_activity_monitor.h"
+#include "ambient_voices.h"
+
+// Diagnostics only: follows a started voice instance to measure its real length.
+struct VoiceProbe {
+    uint32_t id = 0;
+    uint32_t rawId = 0;
+    uintptr_t instance = 0;
+    uint32_t emitter = 0xffffffffu;
+    uint64_t startMs = 0;
+    double dbSeconds = 0.0;
+    SubtitlePriority priority = SubtitlePriority::None;
+    bool dbReached = false;
+    bool pausedDuring = false;
+};
 
 class ModRuntime {
 public:
@@ -23,6 +37,18 @@ public:
     void onFocus(bool focused);
 
     bool handleVoiceline(const AudioEvent& event);
+    // Ambient voices: tracked while they play, shown only within range.
+    void addAmbient(const AudioEvent& event, SubtitleRuntime::clock::time_point now);
+    void updateAmbient(const PlaybackClock::State& playback);
+    // Voice-length probes: only while a capture is recording.
+    void addVoiceProbe(const AudioEvent& event, SubtitlePriority priority);
+    void updateVoiceProbes(bool paused);
+    bool startSubtitle(uint32_t id, const SubtitleMatch& match, const std::vector<SubtitleSegment>& segments,
+                       SubtitleRuntime::clock::time_point start, uint64_t eventMs,
+                       bool levelKnown, float levelDb, const AmbientVoice* ambient);
+    void logActiveEnd(const char* reason, uint32_t replacementId, uint64_t displayNowMs,
+                      SubtitleRuntime::clock::time_point now);
+    void endActiveSubtitle(const char* reason, SubtitleRuntime::clock::time_point now);
 
     AudioQueue m_audio;
     SubtitleEngine m_engine;
@@ -64,4 +90,15 @@ public:
     bool m_pressPromptActive = false;
     uint32_t m_captureMarkerSequence = 0;
     std::deque<AudioEvent> m_pausedDialogueEvents;
+    // The root hook reports a direct story line first; its voice start repeats it.
+    uint32_t m_lastRootPrimaryId = 0;
+    uint64_t m_lastRootPrimaryMs = 0;
+    bool m_activeLevelKnown = false;
+    float m_activeLevelDb = 0.0f;
+    AmbientVoices m_ambient;
+    // The active subtitle belongs to this tracked ambient voice.
+    bool m_activeIsAmbient = false;
+    uintptr_t m_activeAmbientInstance = 0;
+    static constexpr size_t MaxVoiceProbes = 32;
+    std::deque<VoiceProbe> m_voiceProbes;
 };

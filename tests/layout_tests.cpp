@@ -26,7 +26,7 @@ int main() {
         check(subtitleFontSize(s, {3840,2160}) == 60, "fixed size mode");
         s = SubtitleSettings{};
         float previousLines = 0;
-        const char* text = u8"Árvíztűrő tükörfúrógép: ez egy hosszú magyar felirat, amelynek automatikusan több sorba kell törnie a képernyő szélén. ";
+        const char* text = u8"Altaïr crosses the crowded souk of Jerusalem: this is a long subtitle that must wrap automatically into several lines at the screen edge. ";
         std::string longText;
         for (int i=0; i<5; ++i) longText += text;
         for (ImVec2 display : {ImVec2(1280,720), ImVec2(1920,1080), ImVec2(3840,2160), ImVec2(1080,1920)}) {

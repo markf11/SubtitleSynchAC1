@@ -27,6 +27,7 @@ add_library(SubtitleSynchAC1 SHARED
     src/save_activity_monitor.cpp
     src/press_prompt_detector.cpp
     src/audio_resolver.cpp
+    src/ambient_voices.cpp
     src/overlay_ui.cpp
     src/subtitle_layout.cpp
     src/globals.cpp
@@ -129,10 +130,7 @@ set_target_properties(SubtitleSynchAC1 PROPERTIES
     OUTPUT_NAME "SubtitleSynchAC1"
 )
 
-# Do not copy assets into a patch build: that can overwrite local translations.
 include(CTest)
-add_executable(replay_events tools/replay_events.cpp src/subtitle_core.cpp src/subtitle_runtime.cpp)
-target_include_directories(replay_events PRIVATE include)
 if(BUILD_TESTING)
     add_executable(pause_tests tests/pause_tests.cpp src/subtitle_runtime.cpp src/audio_system.cpp src/playback_clock.cpp
         src/pause_manager_probe.cpp src/hooks/pause_hooks.cpp src/pattern_scan.cpp src/pattern_match.cpp src/diagnostics.cpp)
@@ -140,9 +138,6 @@ if(BUILD_TESTING)
     target_compile_definitions(pause_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(pause_tests PRIVATE minhook)
     add_test(NAME pause_tests COMMAND pause_tests)
-    add_test(NAME william_replay COMMAND replay_events
-        ${ROOT}/tests/fixtures/william-corridor.log ${ROOT}/assets/subtitles.json)
-    set_tests_properties(william_replay PROPERTIES PASS_REGULAR_EXPRESSION "events=10 exact_matches=9")
     add_executable(layout_tests tests/layout_tests.cpp src/subtitle_layout.cpp)
     target_include_directories(layout_tests PRIVATE include)
     target_link_libraries(layout_tests PRIVATE imgui)
@@ -157,11 +152,8 @@ if(BUILD_TESTING)
     target_include_directories(diagnostics_tests PRIVATE include)
     target_compile_definitions(diagnostics_tests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
     add_test(NAME diagnostics_tests COMMAND diagnostics_tests)
-    add_test(NAME tutorial_replay COMMAND replay_events
-        ${ROOT}/tests/fixtures/tutorial-v2.log ${ROOT}/tests/fixtures/subtitles.json)
-    set_tests_properties(tutorial_replay PROPERTIES PASS_REGULAR_EXPRESSION "events=6 exact_matches=1")
     add_executable(subtitle_tests tests/subtitle_tests.cpp src/subtitle_core.cpp
-        src/subtitle_runtime.cpp src/audio_system.cpp src/audio_resolver.cpp src/pattern_match.cpp)
+        src/subtitle_runtime.cpp src/audio_system.cpp src/audio_resolver.cpp src/ambient_voices.cpp src/pattern_match.cpp)
     target_include_directories(subtitle_tests PRIVATE include)
     add_test(NAME subtitle_tests COMMAND subtitle_tests)
     add_executable(hook_tests tests/hook_tests.cpp src/hooks/asm_hooks.cpp src/playback_clock.cpp

@@ -11,7 +11,6 @@
 #include "subtitle_layout.h"
 #include "globals.h"
 #include "diagnostics.h"
-#include "hooks/press_prompt_hook.h"
 
 SubtitleSettings g_subtitleSettings;
 
@@ -188,57 +187,35 @@ void SubtitleOverlay::drawCaptureMarker()
 
 
 void SubtitleOverlay::drawDebugWindow() {
-    ImGui::SetNextWindowSize(ImVec2(450, 430), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(450, 0), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(0, 0));
 
-    ImGui::Begin("SubtitleSynchAC1 by bloxtbc", &m_debugWindow, ImGuiWindowFlags_None);
+    ImGui::Begin("SubtitleSynchAC1 by bloxtbc", &m_debugWindow, ImGuiWindowFlags_AlwaysAutoResize);
 
+    ImGui::TextWrapped("SubtitleSynchAC1 was created by bloxtbc.");
+    ImGui::TextWrapped("Co-authors: Hadrorex, Zull11");
     ImGui::Separator();
 
-    ImGui::TextWrapped("This mod was developed and created by bloxtbc on NexusMods, support me and report any bugs if there are any on the NexusMods page for SubtitleSynchAC1.");
-
-    ImGui::Checkbox("Show subtitle", &m_debugVisible);
-    ImGui::Text("Loaded font: %s", g_subtitleSettings.font ? "yes" : "no");
-
-    ImGuiIO& io = ImGui::GetIO();
-    const ImVec2 screenSize = io.DisplaySize;
-    ImGui::Text("Game display: %.0f x %.0f", screenSize.x, screenSize.y);
+    ImGui::Checkbox("Show subtitles", &g_subtitleSettings.showSubtitles);
     ImGui::SliderFloat("Subtitle scale", &g_subtitleSettings.scale, 0.5f, 3.0f);
-    ImGui::Text("Effective font size: %.1f px", subtitleFontSize(g_subtitleSettings, screenSize));
-    ImGui::Text("Save activity: %s", m_saveIndicatorActive ? "detected" : "idle");
-    ImGui::Text("Interaction prompt: %s", !PressPromptHook::address() ? "observer unavailable" :
-        m_pressPromptActive ? "detected" : "idle");
-    ImGui::TextWrapped("Resolution scaling, wrapping, centering and prompt positioning are automatic. Advanced settings remain available in SubtitleSynchAC1.ini.");
+    ImGui::Checkbox("Show sound descriptions ([laughs], [groans])", &g_subtitleSettings.showSoundCaptions);
 
     ImGui::Separator();
-
-    bool recording = Diagnostics::recording() &&
-        Diagnostics::recordingTarget() == Diagnostics::RecordingTarget::General;
-    static bool recordingFailed = false;
-    if (ImGui::Checkbox("Record diagnostics and F2 markers", &recording))
-        recordingFailed = !Diagnostics::setRecording(recording);
-    bool garnierRecording = Diagnostics::recording() &&
-        Diagnostics::recordingTarget() == Diagnostics::RecordingTarget::GarnierConfession;
-    if (ImGui::Checkbox("Record Garnier confession", &garnierRecording))
-        recordingFailed = !Diagnostics::setRecording(garnierRecording,
-            Diagnostics::RecordingTarget::GarnierConfession);
-    if (garnierRecording)
-        ImGui::TextWrapped("Garnier recording active. F2 marks a problem. Stop after the confession to save the two .garnier logs.");
-    if (recordingFailed)
-        ImGui::TextWrapped("Cannot open recording files in the mod folder.");
-    ImGui::TextWrapped("Recording is off at launch by default. Enable it before testing; F2 marks a moment for review. Disabling flushes and closes both logs.");
-
+    ImGui::TextWrapped("Preview text (shown while this window is open):");
     ImGui::InputTextMultiline(
-        "##debug_output",
+        "##preview_text",
         &m_debugInput,
-        ImVec2(-1.0f, ImGui::GetTextLineHeight() * 8),
+        ImVec2(420.0f, ImGui::GetTextLineHeight() * 4),
         ImGuiInputTextFlags_AllowTabInput
     );
 
+    static bool saveFailed = false;
     if (ImGui::Button("Save to .ini"))
-       m_config.save();
+        saveFailed = !m_config.save();
+    if (saveFailed)
+        ImGui::TextWrapped("Cannot write SubtitleSynchAC1.ini in the mod folder.");
 
-    ImGui::TextWrapped("F1 toggles this debug window.");
+    ImGui::TextWrapped("F1 opens and closes this window.");
 
     ImGui::End();
 }
@@ -288,7 +265,7 @@ void SubtitleOverlay::render(HWND window)
         }
     } else m_layoutLogged = false;
 
-    ImGui::PushStyleColor(ImGuiCol_Text, g_subtitleSettings.textColor);
+    ImGui::PushStyleColor(ImGuiCol_Text, m_secondary ? g_subtitleSettings.secondaryTextColor : g_subtitleSettings.textColor);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));

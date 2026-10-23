@@ -226,6 +226,41 @@ void ModRuntime::update(void) {
                 "unresolved-resource", m_activeSubtitleId);
             continue;
         }
+        if (event.resolution == Resolution::LeafVoice && Diagnostics::enabled())
+            Diagnostics::log("voice_level id=0x%08lx raw=0x%08lx known=%d positional=%d distance=%.1f level_db=%.1f emitter=0x%08lx",
+                static_cast<unsigned long>(event.id), static_cast<unsigned long>(event.rawId),
+                event.levelKnown, event.positional, event.distance, event.levelDb,
+                static_cast<unsigned long>(event.emitter));
+        if (event.resolution == Resolution::LeafVoice && eventPriority != SubtitlePriority::None)
+            addVoiceProbe(event, eventPriority);
+        // With the voice-start hook, ambient lines come from it: only it knows
+        // how loud the speaker is. Story lines keep the earlier root report.
+        if (event.resolution != Resolution::LeafVoice) {
+            if (eventPriority == SubtitlePriority::Secondary && AudioHook::leafActive()) {
+                Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+                    "secondary-awaits-voice-start", m_activeSubtitleId);
+                continue;
+            }
+            if (eventPriority == SubtitlePriority::Primary) {
+                m_lastRootPrimaryId = event.id;
+                m_lastRootPrimaryMs = event.timestampMs;
+            }
+        } else if (eventPriority == SubtitlePriority::Primary) {
+            if (event.id == m_lastRootPrimaryId && event.timestampMs >= m_lastRootPrimaryMs &&
+                event.timestampMs - m_lastRootPrimaryMs <= 1000) {
+                Diagnostics::log("voice_start_delay id=0x%08lx root_to_voice_ms=%llu",
+                    static_cast<unsigned long>(event.id),
+                    static_cast<unsigned long long>(event.timestampMs - m_lastRootPrimaryMs));
+                Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+                    "voice-start-duplicate", m_activeSubtitleId);
+                continue;
+            }
+        } else if (eventPriority == SubtitlePriority::Secondary) {
+            // Follow the ambient voice while it plays, also during a pause;
+            // updateAmbient shows it only while the speaker is in range.
+            addAmbient(event, queuePlayback.now);
+            continue;
+        }
         if (queuePlayback.paused) {
             if (eventPriority == SubtitlePriority::None) {
                 Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
@@ -269,6 +304,8 @@ void ModRuntime::update(void) {
     }
 
     const auto playback = g_playbackClock.state();
+    updateVoiceProbes(playback.paused);
+    updateAmbient(playback);
     const auto runtimeUpdate = m_runtime.update(playback.now);
     if (runtimeUpdate.kind == SubtitleUpdateKind::SegmentChanged) {
         const auto elapsed = std::chrono::duration<double>(playback.now - m_activeSubtitleStart).count();
@@ -312,6 +349,8 @@ void ModRuntime::update(void) {
         m_activeSubtitleBaseDuration = 0.0;
         m_activeSubtitleDuration = 0.0;
         m_activeSubtitleSegments.clear();
+        m_activeIsAmbient = false;
+        m_activeAmbientInstance = 0;
     }
 
     // Keep the current subtitle in the frozen runtime, but do not draw it over
@@ -319,10 +358,18 @@ void ModRuntime::update(void) {
     bool visible = playbackSubtitleVisible(m_runtime.active(), playback.paused);
     std::string text = m_runtime.currentText();
     const bool debugWindow = m_overlay.isDebugWindowVisible();
-    const bool debugPreview = m_overlay.isDebugVisible();
+    // The F1 window always shows its preview text in place of the subtitle.
+    const bool debugPreview = debugWindow;
     if (debugWindow && debugPreview) {
         visible = !playback.paused;
         text = m_overlay.debugText();
+    }
+    if (!g_subtitleSettings.showSubtitles)
+        visible = false;
+    if (!g_subtitleSettings.showSoundCaptions) {
+        // A segment that is only "[laughs]" keeps its time but shows nothing.
+        text = removeSoundCaptions(text);
+        if (text.empty()) visible = false;
     }
 
     if (Diagnostics::enabled() &&
@@ -334,6 +381,8 @@ void ModRuntime::update(void) {
     }
 
     m_overlay.setVisible(visible);
+    m_overlay.setSecondary(!(debugWindow && debugPreview) &&
+        m_activeSubtitlePriority == SubtitlePriority::Secondary);
     m_overlay.setText(text);
 
     if (recordingStarted || visible != m_lastDiagnosticVisible || text != m_lastDiagnosticText) {
@@ -390,44 +439,205 @@ bool ModRuntime::handleVoiceline(const AudioEvent& event)
             m_activeSubtitleId, priorityName(m_activeSubtitlePriority));
         return false;
     }
+    if (m_runtime.active() && match.priority == SubtitlePriority::Secondary &&
+        m_activeSubtitlePriority == SubtitlePriority::Secondary) {
+        const bool speaking = std::chrono::duration<double>(now - m_activeSubtitleStart).count() <
+            m_activeSubtitleBaseDuration;
+        if (!shouldReplaceSecondary({m_activeSubtitleId, m_activeLevelKnown, m_activeLevelDb}, speaking,
+                                    {id, event.levelKnown, event.levelDb})) {
+            Diagnostics::log("subtitle_suppressed id=0x%08lx priority=secondary active_id=0x%08lx reason=secondary-rank-or-farther level_db=%.1f active_level_db=%.1f",
+                static_cast<unsigned long>(id), static_cast<unsigned long>(m_activeSubtitleId),
+                event.levelDb, m_activeLevelDb);
+            Diagnostics::captureSuppressed(displayNowMs, id, priorityName(match.priority),
+                m_activeSubtitleId, priorityName(m_activeSubtitlePriority));
+            return false;
+        }
+    }
+    return startSubtitle(id, match, segments, now, event.timestampMs, event.levelKnown, event.levelDb, nullptr);
+}
+
+void ModRuntime::logActiveEnd(const char* reason, uint32_t replacementId, uint64_t displayNowMs,
+                              SubtitleRuntime::clock::time_point now)
+{
+    const auto elapsed = std::chrono::duration<double>(now - m_activeSubtitleStart).count();
+    if (m_runtime.currentIndex() < m_activeSubtitleSegments.size())
+        Diagnostics::captureSegment("subtitle_segment_end", displayNowMs, m_activeSubtitleId,
+            m_runtime.currentIndex(), elapsed,
+            m_activeSubtitleSegments[m_runtime.currentIndex()].text);
+    Diagnostics::captureSubtitleEnd(m_activeSubtitleDisplayStartMs, displayNowMs,
+        m_activeSubtitleId, priorityName(m_activeSubtitlePriority), elapsed,
+        m_activeSubtitleBaseDuration, m_activeSubtitleDuration, reason, replacementId);
+    Diagnostics::log("subtitle_end id=0x%08lx reason=%s replacement_id=0x%08lx segment=%zu elapsed=%.3f configured_duration=%.3f",
+        static_cast<unsigned long>(m_activeSubtitleId), reason, static_cast<unsigned long>(replacementId),
+        m_runtime.currentIndex(), elapsed, m_activeSubtitleDuration);
+}
+
+void ModRuntime::endActiveSubtitle(const char* reason, SubtitleRuntime::clock::time_point now)
+{
+    if (!m_runtime.active())
+        return;
+    logActiveEnd(reason, 0, GetTickCount64(), now);
+    m_runtime.reset();
+    m_activeSubtitleId = 0;
+    m_activeSubtitlePriority = SubtitlePriority::None;
+    m_activeSubtitleDisplayStartMs = 0;
+    m_activeSubtitleBaseDuration = 0.0;
+    m_activeSubtitleDuration = 0.0;
+    m_activeSubtitleSegments.clear();
+    m_activeIsAmbient = false;
+    m_activeAmbientInstance = 0;
+}
+
+bool ModRuntime::startSubtitle(uint32_t id, const SubtitleMatch& match,
+    const std::vector<SubtitleSegment>& segments, SubtitleRuntime::clock::time_point start,
+    uint64_t eventMs, bool levelKnown, float levelDb, const AmbientVoice* ambient)
+{
+    const auto now = g_playbackClock.state().now;
+    const auto displayNowMs = GetTickCount64();
     const double baseDuration = SubtitleEngine::extractDuration(match.raw);
     const double duration = applySubtitleTailExtension(
         baseDuration, g_subtitleSettings.tailExtensionMs);
-    if (m_runtime.active()) {
-        const auto elapsed = std::chrono::duration<double>(now - m_activeSubtitleStart).count();
-        if (m_runtime.currentIndex() < m_activeSubtitleSegments.size())
-            Diagnostics::captureSegment("subtitle_segment_end", displayNowMs, m_activeSubtitleId,
-                m_runtime.currentIndex(), elapsed,
-                m_activeSubtitleSegments[m_runtime.currentIndex()].text);
-        Diagnostics::captureSubtitleEnd(m_activeSubtitleDisplayStartMs, displayNowMs,
-            m_activeSubtitleId, priorityName(m_activeSubtitlePriority), elapsed,
-            m_activeSubtitleBaseDuration, m_activeSubtitleDuration,
-            "replaced-by-audio", id);
-        Diagnostics::log("subtitle_end id=0x%08lx reason=replaced-by-audio replacement_id=0x%08lx segment=%zu elapsed=%.3f configured_duration=%.3f",
-            static_cast<unsigned long>(m_activeSubtitleId), static_cast<unsigned long>(id),
-            m_runtime.currentIndex(), elapsed, m_activeSubtitleDuration);
-    }
+    if (m_runtime.active())
+        logActiveEnd("replaced-by-audio", id, displayNowMs, now);
     double waitsBeforeFinal = 0.0;
     for (size_t i = 0; i + 1 < segments.size(); ++i)
         if (segments[i].waitAfter > 0.0) waitsBeforeFinal += segments[i].waitAfter;
-    Diagnostics::log("subtitle_start id=0x%08lx replaces_active=%d segments=%zu base_duration=%.3f tail_extension_ms=%d duration=%.3f final_window=%.3f",
+    const double joinedAt = std::chrono::duration<double>(now - start).count();
+    Diagnostics::log("subtitle_start id=0x%08lx replaces_active=%d segments=%zu base_duration=%.3f tail_extension_ms=%d duration=%.3f final_window=%.3f joined_at=%.3f",
         static_cast<unsigned long>(id), m_runtime.active(), segments.size(),
         baseDuration > 0.0 ? baseDuration : 3.0, g_subtitleSettings.tailExtensionMs, duration,
-        (std::max)(0.0, duration - waitsBeforeFinal));
+        (std::max)(0.0, duration - waitsBeforeFinal), joinedAt);
+    // A voice joined mid-line starts in the past; the next runtime update
+    // advances to the segment that is playing now.
     m_runtime.start(segments, std::chrono::duration_cast<SubtitleRuntime::clock::duration>(
-        std::chrono::duration<double>(duration)), now);
+        std::chrono::duration<double>(duration)), start);
     m_activeSubtitleId = id;
     m_activeSubtitlePriority = match.priority;
-    m_activeSubtitleStart = now;
+    m_activeLevelKnown = levelKnown;
+    m_activeLevelDb = levelDb;
+    m_activeIsAmbient = ambient != nullptr;
+    m_activeAmbientInstance = ambient ? ambient->instance : 0;
+    m_activeSubtitleStart = start;
     m_activeSubtitleDisplayStartMs = displayNowMs;
     m_activeSubtitleBaseDuration = baseDuration > 0.0 ? baseDuration : 3.0;
     m_activeSubtitleDuration = duration;
     m_activeSubtitleSegments = segments;
-    Diagnostics::captureSubtitleStart(event.timestampMs, displayNowMs, id,
+    Diagnostics::captureSubtitleStart(eventMs, displayNowMs, id,
         priorityName(match.priority), m_activeSubtitleBaseDuration, duration, match.raw);
-    Diagnostics::captureSegment("subtitle_segment_start", displayNowMs, id, 0, 0.0,
+    Diagnostics::captureSegment("subtitle_segment_start", displayNowMs, id, 0, joinedAt,
         segments.front().text);
     m_overlay.setSegments(segments);
     m_overlay.setVisible(true);
     return true;
+}
+
+void ModRuntime::addAmbient(const AudioEvent& event, SubtitleRuntime::clock::time_point now)
+{
+    const auto match = m_engine.getMatch(event.id);
+    if (!match) {
+        Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+            "missing-subtitle", m_activeSubtitleId);
+        return;
+    }
+    AmbientVoice voice;
+    voice.id = event.id;
+    voice.instance = event.instance;
+    voice.emitter = event.emitter;
+    voice.start = now;
+    const double baseDuration = SubtitleEngine::extractDuration(match.raw);
+    voice.audioSeconds = baseDuration > 0.0 ? baseDuration : 3.0;
+    voice.levelKnown = event.levelKnown;
+    voice.positional = event.positional;
+    voice.distance = event.distance;
+    m_ambient.add(voice);
+    const AmbientVoice* added = m_ambient.find(voice.id, voice.instance);
+    const bool inRange = added && added->inRange;
+    Diagnostics::captureDecision(GetTickCount64(), event.id, event.rawId,
+        inRange ? "ambient-in-range" : "ambient-out-of-range", m_activeSubtitleId);
+    Diagnostics::log("ambient_voice action=start id=0x%08lx distance=%.1f max=%.0f in_range=%d tracked=%zu",
+        static_cast<unsigned long>(event.id), event.distance, secondaryMaxDistance(event.id),
+        inRange, m_ambient.size());
+}
+
+void ModRuntime::updateAmbient(const PlaybackClock::State& playback)
+{
+    if (playback.paused)
+        return;
+    m_ambient.update(playback.now, AudioHook::leafActive() ? &AudioHook::readVoiceLevelNow : nullptr);
+    if (m_runtime.active() && m_activeSubtitlePriority == SubtitlePriority::Primary)
+        return;  // story dialogue always wins; ambient lines can join after it
+    const AmbientVoice* shown = m_runtime.active() && m_activeIsAmbient
+        ? m_ambient.find(m_activeSubtitleId, m_activeAmbientInstance) : nullptr;
+    if (shown && !shown->inRange) {
+        Diagnostics::log("ambient_voice action=hide id=0x%08lx distance=%.1f max=%.0f",
+            static_cast<unsigned long>(shown->id), shown->distance, secondaryMaxDistance(shown->id));
+        endActiveSubtitle("out-of-range", playback.now);
+        shown = nullptr;
+    }
+    const AmbientVoice* best = m_ambient.choose(shown);
+    if (!best || best == shown)
+        return;
+    const AmbientVoice voice = *best;
+    const auto match = m_engine.getMatch(voice.id);
+    auto segments = SubtitleEngine::parseSegments(SubtitleEngine::stripTags(match.raw));
+    if (!match || segments.empty())
+        return;
+    Diagnostics::log("ambient_voice action=show id=0x%08lx distance=%.1f elapsed=%.3f",
+        static_cast<unsigned long>(voice.id), voice.distance,
+        std::chrono::duration<double>(playback.now - voice.start).count());
+    startSubtitle(voice.id, match, segments, voice.start, GetTickCount64(), voice.levelKnown,
+        0.0f, &voice);
+}
+
+void ModRuntime::addVoiceProbe(const AudioEvent& event, SubtitlePriority priority)
+{
+    if (!Diagnostics::captureEnabled() || !event.instance || event.emitter == 0xffffffffu)
+        return;
+    const auto match = m_engine.getMatch(event.id);
+    if (!match)
+        return;
+    if (m_voiceProbes.size() >= MaxVoiceProbes)
+        m_voiceProbes.pop_front();
+    VoiceProbe probe;
+    probe.id = event.id;
+    probe.rawId = event.rawId;
+    probe.instance = event.instance;
+    probe.emitter = event.emitter;
+    probe.startMs = GetTickCount64();
+    probe.dbSeconds = SubtitleEngine::extractDuration(match.raw);
+    probe.priority = priority;
+    m_voiceProbes.push_back(probe);
+}
+
+void ModRuntime::updateVoiceProbes(bool paused)
+{
+    if (!Diagnostics::captureEnabled()) {
+        m_voiceProbes.clear();
+        return;
+    }
+    const auto nowMs = GetTickCount64();
+    for (auto it = m_voiceProbes.begin(); it != m_voiceProbes.end();) {
+        if (paused) it->pausedDuring = true;
+        const uint64_t elapsedMs = nowMs >= it->startMs ? nowMs - it->startMs : 0;
+        // A freed or reused instance no longer reports the same emitter.
+        const VoiceLevel level = AudioHook::readVoiceLevelNow(it->instance);
+        const char* reason = level.emitter != it->emitter ? "voice-ended"
+            : elapsedMs >= 120000 ? "timeout" : nullptr;
+        if (!reason && !it->dbReached && elapsedMs >= it->dbSeconds * 1000.0) {
+            it->dbReached = true;
+            Diagnostics::log("voice_probe action=db-duration-reached id=0x%08lx elapsed_ms=%llu db_ms=%.0f",
+                static_cast<unsigned long>(it->id), static_cast<unsigned long long>(elapsedMs),
+                it->dbSeconds * 1000.0);
+        }
+        if (!reason) {
+            ++it;
+            continue;
+        }
+        Diagnostics::captureVoiceEnd(nowMs, it->id, it->rawId, priorityName(it->priority), elapsedMs,
+            it->dbSeconds, it->pausedDuring, reason);
+        Diagnostics::log("voice_end id=0x%08lx raw=0x%08lx priority=%s voice_ms=%llu db_ms=%.0f paused_during=%u reason=%s",
+            static_cast<unsigned long>(it->id), static_cast<unsigned long>(it->rawId), priorityName(it->priority),
+            static_cast<unsigned long long>(elapsedMs), it->dbSeconds * 1000.0, it->pausedDuring, reason);
+        it = m_voiceProbes.erase(it);
+    }
 }

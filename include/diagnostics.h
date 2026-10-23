@@ -3,13 +3,11 @@
 #include <cstdint>
 #include <string>
 namespace Diagnostics {
-enum class RecordingTarget { General, GarnierConfession };
 void init(const std::string& directory);
 bool enabled();
 bool captureEnabled();
 bool recording();
-bool setRecording(bool active, RecordingTarget target = RecordingTarget::General);
-RecordingTarget recordingTarget();
+bool setRecording(bool active);
 uint64_t recordingSession();
 void log(const char* format, ...);
 void error(const char* message);
@@ -32,5 +30,8 @@ void captureDisplay(uint64_t atMs, bool visible, uint32_t activeId, bool paused,
                     const std::string& text);
 void captureDecision(uint64_t atMs, uint32_t id, uint32_t rawId,
                      const char* reason, uint32_t activeId);
+// Real play length of a voice instance, measured until the engine frees it.
+void captureVoiceEnd(uint64_t atMs, uint32_t id, uint32_t rawId, const char* priority,
+                     uint64_t elapsedMs, double databaseDuration, bool pausedDuring, const char* reason);
 void captureQueueDrops(uint64_t atMs, uint32_t count);
 }

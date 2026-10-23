@@ -4,6 +4,8 @@
 #include <Windows.h>
 #include <MinHook.h>
 #include <xbyak/xbyak.h>
+#include <cmath>
+#include <cstring>
 #include <iostream>
 
 int main() {
@@ -53,8 +55,58 @@ int main() {
         if (!g_AudioQueue.pop(event) || event.id != 0x20a802f9 || event.rawId != 0x10a80305 ||
             event.resolution != Resolution::DirectReference || !event.threadId) return 5;
     if (g_AudioQueue.pop(event)) return 6;
+    // Leaf voice-start site: the hook sits on the ADD ESP right after the play
+    // CALL; arg 4 = &leaf handle, arg 10 = Instance** (11 cdecl arguments).
+    uint32_t leafHandle = 1;
+    alignas(16) uint8_t instance[0x140]{};
+    uint32_t instancePtr = reinterpret_cast<uintptr_t>(instance);
+    auto put = [&](size_t offset, const void* value, size_t size) { std::memcpy(instance + offset, value, size); };
+    const uint32_t emitterId = 0x42, flags3d = 4;
+    const float emitterPos[3] = {10, 0, 0}, curve[4] = {1, -1, 1, 20};
+    put(8, &emitterId, 4); put(0xa0, &flags3d, 4); put(0x88, emitterPos, 12); put(0x118, curve, 16);
+    alignas(16) uint8_t mic[0x44]{};  // listener at the origin, data present
+    uint32_t micHeadSlot = reinterpret_cast<uintptr_t>(mic);
+    Xbyak::CodeGenerator leafCaller;
+    leafCaller.push(leafCaller.esi);
+    leafCaller.mov(leafCaller.esi, reinterpret_cast<uintptr_t>(&leafHandle));
+    leafCaller.push(0);                                              // arg 11
+    leafCaller.push(reinterpret_cast<uintptr_t>(&instancePtr));      // arg 10
+    for (int i = 0; i < 5; ++i) leafCaller.push(0);                  // args 9..5
+    leafCaller.push(leafCaller.esi);                                 // arg 4
+    leafCaller.push(0); leafCaller.push(0); leafCaller.push(0);      // args 3..1
+    leafCaller.call(callee.getCode());
+    auto leafSite = reinterpret_cast<uintptr_t>(leafCaller.getCurr());
+    leafCaller.add(leafCaller.esp, 44);
+    leafCaller.jmp("leafcheck", Xbyak::CodeGenerator::T_NEAR);
+    leafCaller.db(0xcc);
+    leafCaller.L("leafcheck");
+    leafCaller.cmp(leafCaller.esi, reinterpret_cast<uintptr_t>(&leafHandle));
+    leafCaller.je("leafgood");
+    leafCaller.xor_(leafCaller.eax, leafCaller.eax);
+    leafCaller.L("leafgood");
+    leafCaller.pop(leafCaller.esi);
+    leafCaller.ret();
+    leafCaller.ready();
+    auto runLeaf = leafCaller.getCode<unsigned(*)()>();
+    if (!AudioHook::InstallLeaf(leafSite, reinterpret_cast<uintptr_t>(&micHeadSlot)) ||
+        !AudioHook::leafActive()) return 8;
+    // Every voice start is reported, with the emitter's level for the listener.
+    if (runLeaf() != 0x12345678 || calls != 5 || !g_AudioQueue.pop(event) ||
+        event.id != 0x20a802f9 || event.rawId != 0x10a80305 ||
+        event.resolution != Resolution::LeafVoice || !event.levelKnown || !event.positional ||
+        std::fabs(event.distance - 10) > 0.01f || std::fabs(event.levelDb + 5.58f) > 0.05f ||
+        event.emitter != 0x42 || g_AudioQueue.pop(event)) return 9;
+    const uint32_t flags2d = 1;
+    put(0xa0, &flags2d, 4);
+    if (runLeaf() != 0x12345678 || !g_AudioQueue.pop(event) || !event.levelKnown ||
+        event.positional || event.levelDb != 0.0f) return 10;
+    instancePtr = 0;  // started without an instance: level unknown, still reported
+    if (runLeaf() != 0x12345678 || !g_AudioQueue.pop(event) || event.levelKnown) return 11;
+    leafHandle = 2; // a resource handle is not a leaf event
+    if (runLeaf() != 0x12345678 || g_AudioQueue.pop(event)) return 12;
     MH_DisableHook(reinterpret_cast<void*>(site));
+    MH_DisableHook(reinterpret_cast<void*>(leafSite));
     MH_Uninitialize();
-    if (run() != 0x12345678 || calls != 5) return 7;
-    std::cout << "PASS: native x86 detour preserves CALL/result/ESI, captures pause-boundary dialogue and repeats events\n";
+    if (run() != 0x12345678 || calls != 9) return 7;
+    std::cout << "PASS: native x86 detour preserves CALL/result/ESI, captures pause-boundary dialogue, repeats events and leaf voice starts\n";
 }
